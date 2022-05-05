@@ -603,6 +603,48 @@ class Ranking(RankedOrder):
         """
         self.orders.append(order)
 
+    def add_order_decreasing(self, models):
+        """
+        Add model order in decreasing order as listed
+
+        Notes
+        -----
+        Shortcut for add_order
+
+        Parameters
+        ----------
+        models
+        """
+        self.orders.append(Order(list(reversed([[_] for _ in models]))))
+
+    def add_order_fixed(self, models):
+        """
+        Add model order all at the same level in terms of res/abs/scope
+
+        Notes
+        -----
+        Shortcut for add_order
+
+        Parameters
+        ----------
+        models
+        """
+        self.orders.append(Order([models]))
+
+    def add_order_increasing(self, models):
+        """
+        Add model order in increasing order as listed
+
+        Notes
+        -----
+        Shortcut for add_order
+
+        Parameters
+        ----------
+        models
+        """
+        self.orders.append(Order([[_] for _ in models]))
+
     @property
     def bounds(self):
         if not self._bounds:
