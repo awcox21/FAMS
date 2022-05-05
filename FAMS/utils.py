@@ -319,6 +319,34 @@ def oec(scores, weights=None):
     return oecs
 
 
+def ordinal(n, suffix_only=False):
+    """
+    Convert integer to ordinal representation
+
+    Notes
+    -----
+    [From here](https://stackoverflow.com/a/50992575)
+
+    Parameters
+    ----------
+    n : int
+    suffix_only : bool, optional
+
+    Returns
+    -------
+    ordinal : str
+    """
+    n = int(n)
+    if 11 <= (n % 100) <= 13:
+        suffix = 'th'
+    else:
+        suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
+    if suffix_only:
+        return suffix
+    else:
+        return str(n) + suffix
+
+
 def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
                     cmap=None, legend=False):
     """

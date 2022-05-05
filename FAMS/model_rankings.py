@@ -25,7 +25,8 @@ from adjustText import adjust_text
 
 from .utils import (
     dist_median, flatten, get_colors, get_kde,
-    get_kde_percentile, normalize, remove_outliers, num_permutations)
+    get_kde_percentile, normalize, remove_outliers, num_permutations,
+    plot_proportion, ordinal)
 
 markers = matplotlib.markers.MarkerStyle().markers
 included_markers = ['point', 'x', 'star', 'octagon', 'pentagon', 'square', 'diamond']
