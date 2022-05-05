@@ -80,10 +80,37 @@ def decreasing_scope():
     return resolution, abstraction, scope
 
 
+def multiple_scope():
+    """
+    Resolution, abstraction, and scope, with purely increasing
+    resolution and abstraction and multiple opinions on scope: one
+    equivalent and one decreasing
+
+    Notes
+    -----
+    Orders should typically be added using Order from model_rankings
+    and Ranking.add_order, shortcut methods are used here for these
+    simplified cases
+
+    Returns
+    -------
+    individual_ranking
+    """
+    resolution = Ranking(models, 'Resolution')
+    resolution.add_order_increasing(models)
+    abstraction = Ranking(models, 'Abstraction')
+    abstraction.add_order_increasing(models)
+    scope = Ranking(models, 'Scope')
+    scope.add_order_fixed(models)
+    scope.add_order_decreasing(models)
+    return resolution, abstraction, scope
+
+
 if __name__ == '__main__':
     # combined = Ranking.combine(no_scope(), name='notional')
     # combined = Ranking.combine(fixed_scope(), name='notional')
-    combined = Ranking.combine(decreasing_scope(), name='notional')
+    # combined = Ranking.combine(decreasing_scope(), name='notional')
+    combined = Ranking.combine(multiple_scope(), name='notional')
     if plot:
         # Plot fidelity KDE distributions
         combined_models = combined.plot_scores(
