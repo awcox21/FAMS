@@ -13,11 +13,50 @@ from scipy.stats import norm
 
 
 def dist_median(xs, ys, plot=False, ax=None, _spline=None):
+    """
+    Return median of set of distribution data
+
+    Parameters
+    ----------
+    xs : List[float]
+    ys : List[float]
+    plot : bool, optional
+        Flag to add vertical line at median
+    ax
+        Matplotlib axis to use for plotting
+    _spline
+        Scipy spline, used by other function
+
+    Returns
+    -------
+    median : float
+    """
     return dist_percentile(xs, ys, 50, plot, ax, _spline)
 
 
 def dist_percentile(xs, ys, percent, plot=False, ax=None, _spline=None,
                     cmap=None):
+    """
+    Return percentile of distribution data
+
+    Parameters
+    ----------
+    xs : List[float]
+    ys : List[float]
+    percent : float
+    plot : bool, optional
+        Flag to add vertical line at percentile
+    ax
+        Matplotlib axis to use for plotting
+    _spline
+        Scipy spline, used by other function
+    cmap
+        Matplotlib colormap
+
+    Returns
+    -------
+    percentile : float
+    """
     min_, max_ = min(xs), max(xs)
     if not _spline:
         spline = InterpolatedUnivariateSpline(xs, ys)
@@ -127,7 +166,7 @@ def get_kde(samples, sample_weight=None, bandwidth=None, plot=False, cmap=None,
         grid.fit(samples[:, None], **kwargs)
         kde = grid.best_estimator_
     else:
-        kde = KernelDensity(bandwidth)
+        kde = KernelDensity(bandwidth=bandwidth)
         kde.fit(samples[:, None], **kwargs)
     if plot:
         if isinstance(cmap, tuple):
