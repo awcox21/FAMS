@@ -334,6 +334,19 @@ class Model(object):
 
     def plot_gpr(self, input_columns, output_columns, num_samples=1000,
                  color=None, marker=None, normalize=None):
+        """
+        Plots Gaussian process regression, showing mean and confidence
+        bands
+
+        Parameters
+        ----------
+        input_columns
+        output_columns
+        num_samples : float, optional
+        color
+        marker
+        normalize
+        """
         gpr = self.get_gpr(input_columns, output_columns, _plot=True)
         kwargs = {'label': self.name}
         if color:
@@ -846,6 +859,19 @@ class Ranking(RankedOrder):
         return correlations, scores
 
     def describe(self, key, percentiles=None):
+        """
+        Custom describe call for score series
+
+        Parameters
+        ----------
+        key : int
+            Score model key
+        percentiles : List[float], optional
+
+        Returns
+        -------
+        description : Series
+        """
         labels = ['count', 'mean', 'mode', 'std']
         values = [len(self.score_dists[key]), self.score_mean(key),
                   self.score_mode(key), self.score_std(key)]
