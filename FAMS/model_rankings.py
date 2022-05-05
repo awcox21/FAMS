@@ -1663,6 +1663,32 @@ class Ranking(RankedOrder):
     def plot_scores(self, tol=1e-5, cdf=False, cmap=None, reverse=False,
                     title=True, ax=None, scores=None, legend=True,
                     use_ids=False, _durations=False):
+        """
+        Plot KDE distributions and return distribution medians
+
+        Parameters
+        ----------
+        tol : float, optional
+        cdf : bool, optional
+        cmap : optional
+            Matplotlib cmap
+        reverse : bool, optional
+        title : str, optional
+        ax : optional
+            Matplotlib axis to use
+        scores : dict, optional
+            Model score samples. Will use .score_dists if not provided.
+        legend : bool, optional
+        use_ids : bool, optional
+            Flag to use IDs instead of names in legend
+        _durations
+            Run time data, used by estimate_cost
+
+        Returns
+        -------
+        medians : List
+            List of tuple pairs in the form: (median, Model)
+        """
         if scores is None:
             scores = self.score_dists
         if len(self.models) > 6 and not _durations:
