@@ -1836,6 +1836,26 @@ class Ranking(RankedOrder):
                 ax.set_xlim(min_x, max_x)
         return [(_median, _model) for _median, _model, _, _ in models]
 
+    def plot_score_bars(self, cmap=None):
+        """
+        Plots stacked bar charts of probabilities that each model is 1st
+        through last based on scores
+
+        Parameters
+        ----------
+        cmap
+        """
+        prob_levels = [self.prob_level(_) for _ in
+                       range(1, len(self.models) + 1)]
+        plt.figure()
+        for i, scores in enumerate(prob_levels):
+            plot_proportion(i, scores, cmap=cmap, models=self.models,
+                            legend=False)
+        plt.xticks(range(len(self.models)),
+                   ['P({}$^{{{}}}$)'.format(i, ordinal(i, True)) for i in
+                    range(1, len(self.models))] + ['P(last)'])
+        plt.yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+
     def prob_level(self, level=1, include=None):
         """
         Calculate probability model at a certain level given current
