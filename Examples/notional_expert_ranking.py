@@ -106,19 +106,21 @@ def multiple_scope():
     return resolution, abstraction, scope
 
 
+# notional_rankings = no_scope()
+# notional_rankings = fixed_scope()
+# notional_rankings = decreasing_scope()
+notional_rankings = multiple_scope()
+combined = Ranking.combine(notional_rankings, name='notional')
+if plot:
+    # Plot fidelity KDE distributions
+    combined_models = combined.plot_scores(
+        cdf=cdf, cmap=cmap, title=False, legend=True, use_ids=True)
+    if tight:
+        plt.tight_layout()
+    if save:
+        plt.savefig('notional-dists.{}'.format(save))
+    # Plot stacked bar charts of fidelity probabilities
+    combined.plot_score_bars(cmap=cmap)
+
 if __name__ == '__main__':
-    # combined = Ranking.combine(no_scope(), name='notional')
-    # combined = Ranking.combine(fixed_scope(), name='notional')
-    # combined = Ranking.combine(decreasing_scope(), name='notional')
-    combined = Ranking.combine(multiple_scope(), name='notional')
-    if plot:
-        # Plot fidelity KDE distributions
-        combined_models = combined.plot_scores(
-            cdf=cdf, cmap=cmap, title=False, legend=True, use_ids=True)
-        if tight:
-            plt.tight_layout()
-        if save:
-            plt.savefig('notional-dists.{}'.format(save))
-        # Plot stacked bar charts of fidelity probabilities
-        combined.plot_score_bars(cmap=cmap)
     plt.show()
