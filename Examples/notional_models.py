@@ -26,7 +26,7 @@ if dark_background:
 else:
     mono_cmap = gray
 
-random.seed(0)  # for randomly generating orders if needed
+random.seed(2)  # for randomly generating orders if needed
 
 num_models = 4
 
