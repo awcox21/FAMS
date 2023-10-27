@@ -549,17 +549,15 @@ class Order(RankedOrder):
         return orders
 
 
-class ModelRanking(RankedOrder):
-    permutation_limit = 9, 6  # model limit, permutation limit
-
-    def __init__(self, models, name=None, _rankings=None, _scores=None,
+class Ranking(RankedOrder):
+    def __init__(self, items, name=None, _rankings=None, _scores=None,
                  _weights=None, _score_dists=None, _estimators=None):
         """
         Ranking of models based on some criterion
 
         Parameters
         ----------
-        models : List[Model]
+        items : List
         name : str, optional
         _rankings : List[Ranking], optional
             Ranking objects for derived rankings
@@ -572,12 +570,12 @@ class ModelRanking(RankedOrder):
         _estimators : Dict[int: KernelDensity], optional
             Kernel Density estimation objects for current state
         """
-        self._models = models
+        self._items = items
         self._name = name
         ids = list()
-        for model in models:
+        for item in items:
             try:
-                ids.append(model.id)
+                ids.append(item.id)
             except AttributeError:
                 pass
         i = 1
@@ -585,11 +583,11 @@ class ModelRanking(RankedOrder):
             i += max(ids)
         except ValueError:
             pass
-        for model in models:
+        for item in items:
             try:
-                model.id
+                item.id
             except AttributeError:
-                model.id = i
+                item.id = i
                 i += 1
         self.orders = list()
         self._rankings = _rankings
@@ -600,7 +598,7 @@ class ModelRanking(RankedOrder):
         self._bounds = None
         self._score_pdfs, self._score_cdfs = None, None
         self._pairwise_probabilities = None
-
+        
     def __call__(self):
         """
         Need to combine the various different answers for the same thing
@@ -608,22 +606,22 @@ class ModelRanking(RankedOrder):
         Notes
         -----
         - Need to organize the list to just use sequential integers
-        - Essentially not trusting anyone's scale for how much more something
-          is, just the order
-        - Combined ones where they are not the same in any of them will never
-          be in the combined one
-        - Should that just come out as an order or on a scale to show they are
-          closer since at least someone said they are the same
+        - Essentially not trusting anyone's scale for how much more
+          something is, just the order
+        - Combined ones where they are not the same in any of them will
+          never be in the combined one
+        - Should that just come out as an order or on a scale to show
+          they are closer since at least someone said they are the same
           - Maybe this is how it should go, but how is that used later?
 
         Returns
         -------
         combined : Dict[int: float]
         """
-        models = {_model.id: _model for _model in self.models}
+        items = {_item.id: _item for _item in self.items}
         orders = [_order() for _order in self.orders]
         combined = dict()
-        for key in models:
+        for key in items:
             values = [_order[key] for _order in orders]
             combined[key] = values
             # combined[key] = mean(values)
@@ -632,73 +630,43 @@ class ModelRanking(RankedOrder):
     def __str__(self):
         return self.name
 
-    def add_order(self, order):
-        """
-        Add a new model order based on expert opinion
+    @staticmethod
+    def _get_colors(num, cmap, reverse=False):
+        cmap = cm.get_cmap(cmap)
+        if cmap(0) in (cm.gray(0), cm.gray(256)):
+            min_, max_ = 80 / 256., 176 / 256.
+        else:
+            min_, max_ = 48 / 256, 208 / 256
+        return get_colors(num, cmap, reverse, min_, max_)
 
-        Parameters
-        ----------
-        order : Order
-            Dictionary of model: integer ranked order pairs. Multiple models
-            can have the same ranking
-        """
-        self.orders.append(order)
+    @staticmethod
+    def _get_weights(weights):
+        weights_ = list(weights)
+        while True:
+            weights = list()
 
-    def add_order_decreasing(self, models):
-        """
-        Add model order in decreasing order as listed
+            def simplify(current):
+                updated = list()
+                for i in current:
+                    if not isinstance(i, list):
+                        updated.append(i)
+                    else:
+                        if not any(isinstance(j, list) for j in i):
+                            updated.extend(normalize(i))
+                        elif all(not any(isinstance(k, list) for k in j) for j
+                                 in i):
+                            updated.extend(flatten(i))
+                        else:
+                            simplify(i)
+                weights.append(updated)
 
-        Notes
-        -----
-        Shortcut for add_order
-
-        Parameters
-        ----------
-        models
-        """
-        self.orders.append(Order(list(reversed([[_] for _ in models]))))
-
-    def add_order_fixed(self, models):
-        """
-        Add model order all at the same level in terms of res/abs/scope
-
-        Notes
-        -----
-        Shortcut for add_order
-
-        Parameters
-        ----------
-        models
-        """
-        self.orders.append(Order([models]))
-
-    def add_order_increasing(self, models):
-        """
-        Add model order in increasing order as listed
-
-        Notes
-        -----
-        Shortcut for add_order
-
-        Parameters
-        ----------
-        models
-        """
-        self.orders.append(Order([[_] for _ in models]))
-
-    @property
-    def bounds(self):
-        if not self._bounds:
-            min_, max_ = 0.0, 1.0
-            for scores in self.score_dists.values():
-                xs = scores.index.values
-                _min, _max = min(xs), max(xs)
-                if _min < min_:
-                    min_ = _min
-                if _max > max_:
-                    max_ = _max
-            self._bounds = min_, max_
-        return self._bounds
+            simplify(weights_)
+            if len(weights) == 1 and not any(
+                    isinstance(i, list) for i in weights[0]):
+                weights = normalize(weights[0])
+                return weights
+            else:
+                weights_ = weights
 
     @classmethod
     def combine(cls, rankings, weights=None, name=None, num_samples=1000,
@@ -721,11 +689,11 @@ class ModelRanking(RankedOrder):
         num_samples : int, optional
         score_rankings : List[dict[int: Union[List[float]]]], optional
             Scores not generated from Ranking call. Iterable of
-            dictionaries containing a list of samples for each model.
+            dictionaries containing a list of samples for each item.
         score_weights : List[float, size n_scores], optional
         """
-        models = list(rankings[0].items)
-        score_dists = {_model.id: list() for _model in models}
+        items = list(rankings[0].items)
+        score_dists = {_item.id: list() for _item in items}
         scores = dict()
         rankings_ = list(rankings)
         rankings = list()
@@ -800,8 +768,660 @@ class ModelRanking(RankedOrder):
                 start, stop = find_start_stop(xs)
             sample = np.exp(kde.score_samples(xs[:, np.newaxis]))
             score_dists[key] = Series(sample, xs)
-        return cls(models, name, rankings, scores, weights, score_dists,
+        return cls(items, name, rankings, scores, weights, score_dists,
                    estimators)
+
+    @property
+    def bounds(self):
+        if not self._bounds:
+            min_, max_ = 0.0, 1.0
+            for scores in self.score_dists.values():
+                xs = scores.index.values
+                _min, _max = min(xs), max(xs)
+                if _min < min_:
+                    min_ = _min
+                if _max > max_:
+                    max_ = _max
+            self._bounds = min_, max_
+        return self._bounds
+
+    @property
+    def items(self):
+        return self._items
+
+    @property
+    def name(self):
+        if not self._name:
+            if not self._rankings:
+                raise AttributeError('Name not defined')
+            else:
+                count = 0
+                names = list()
+                for ranking in self._rankings:
+                    try:
+                        name = ranking.name
+                    except AttributeError:
+                        count += 1
+                    else:
+                        names.append(name)
+                if not count:
+                    name = ', '.join(names[:-1]) + ', and {}'.format(names[-1])
+                else:
+                    if not names:
+                        name = '{} rankings'.format(count)
+                    else:
+                        name = ', '.join(names)
+                        name += ', and {} other'.format(count)
+                        if count > 1:
+                            name += 's'
+                return name.title()
+        else:
+            return self._name.title()
+
+    @property
+    def scores(self):
+        """
+        Scores used to estimate densities, can be developed from expert
+        rankings or, for models, updated using data
+
+        Returns
+        -------
+        scores : Dict
+        """
+        if not self._scores:
+            raise AttributeError('Order scores not yet created')
+        return self._scores
+
+    @scores.setter
+    def scores(self, scores):
+        """
+        Setter for modified scores
+
+        Notes
+        -----
+        Sets/resets bounds and distribution splines
+
+        Parameters
+        ----------
+        scores : Dict
+        """
+        self._scores = scores
+        self._bounds, self._weights = None, None
+        self._score_pdfs, self._score_cdfs = dict(), dict()
+
+    @property
+    def score_cdfs(self):
+        if not self._score_cdfs:
+            self._score_cdfs, pdfs = dict(), self.score_pdfs
+            for item in self.items:
+                id_ = item.id
+                pdf = pdfs[id_]
+                xs = self.score_dists[id_].index.values
+                x_ = xs[-1]
+                ys = [pdf.integral(_x, x_) for _x in xs]
+                min_, max_ = self.bounds
+                if xs[0] > min_:
+                    xs = np.append([min_], xs)
+                    ys = np.append([0.0], ys)
+                if xs[-1] < max_:
+                    xs = np.append(xs, [max_])
+                    ys = np.append(ys, [0.0])
+                cdf = InterpolatedUnivariateSpline(xs, ys)
+                self._score_cdfs[id_] = cdf
+        return self._score_cdfs
+
+    @property
+    def score_dists(self):
+        """
+        Scores derived from expert-generated ranked orders for derived
+        rankings
+
+        Returns
+        -------
+        scores : Dict
+        """
+        if not self._score_dists:
+            raise AttributeError('Order score distributions not yet created')
+        return self._score_dists
+
+    @property
+    def score_pdfs(self):
+        if not self._score_pdfs:
+            self._score_pdfs = dict()
+            for item in self.items:
+                key = item.id
+                scores = self.score_dists[key]
+                xs = scores.index.values
+                ys = scores.values
+                min_, max_ = self.bounds
+                if xs[0] > min_:
+                    xs = np.append([min_], xs)
+                    ys = np.append([0.0], ys)
+                if xs[-1] < max_:
+                    xs = np.append(xs, [max_])
+                    ys = np.append(ys, [0.0])
+                pdf = InterpolatedUnivariateSpline(xs, ys)
+                self._score_pdfs[key] = pdf
+        return self._score_pdfs
+
+    @property
+    def weights(self):
+        """
+        Weights corresponding to fidelity scores
+
+        Returns
+        -------
+        weights : List
+        """
+        if not self._weights:
+            raise AttributeError('Order weights not yet created')
+        return self._weights
+
+    @weights.setter
+    def weights(self, weights):
+        """
+        Setter for modified weights
+
+        Notes
+        -----
+        Sets/resets bounds and distribution splines
+
+        Parameters
+        ----------
+        weights : List
+        """
+        self._weights = weights
+    
+    def add_order(self, order):
+        """
+        Add a new model order based on expert opinion
+
+        Parameters
+        ----------
+        order : Order
+            Dictionary of model: integer ranked order pairs. Multiple models
+            can have the same ranking
+        """
+        self.orders.append(order)
+
+    def add_order_decreasing(self, items):
+        """
+        Add model order in decreasing order as listed
+
+        Notes
+        -----
+        Shortcut for add_order
+
+        Parameters
+        ----------
+        items
+        """
+        self.orders.append(Order(list(reversed([[_] for _ in items]))))
+
+    def add_order_fixed(self, items):
+        """
+        Add model order all at the same level in terms of res/abs/scope
+
+        Notes
+        -----
+        Shortcut for add_order
+
+        Parameters
+        ----------
+        items
+        """
+        self.orders.append(Order([items]))
+
+    def add_order_increasing(self, items):
+        """
+        Add model order in increasing order as listed
+
+        Notes
+        -----
+        Shortcut for add_order
+
+        Parameters
+        ----------
+        items
+        """
+        self.orders.append(Order([[_] for _ in items]))
+
+    def describe(self, key, percentiles=None):
+        """
+        Custom describe call for score series
+
+        Parameters
+        ----------
+        key : int
+            Score item key
+        percentiles : List[float], optional
+
+        Returns
+        -------
+        description : Series
+        """
+        labels = ['count', 'mean', 'mode', 'std']
+        values = [len(self.score_dists[key]), self.score_mean(key),
+                  self.score_mode(key), self.score_std(key)]
+        if not percentiles:
+            percentiles = [25, 50, 75]
+        for percentile in percentiles:
+            labels.append('{}%'.format(percentile))
+            values.append(self.score_percentile(key, percentile))
+        return Series(values, index=labels)
+
+    def plot_score_bars(self, cmap=None):
+        """
+        Plots stacked bar charts of probabilities that each item is 1st
+        through last based on scores
+
+        Parameters
+        ----------
+        cmap
+        """
+        prob_levels = [self.prob_level(_) for _ in
+                       range(1, len(self.items) + 1)]
+        plt.figure()
+        for i, scores in enumerate(prob_levels):
+            plot_proportion(i, scores, cmap=cmap, items=self.items,
+                            legend=False)
+        plt.xticks(range(len(self.items)),
+                   ['P({}$^{{{}}}$)'.format(i, ordinal(i, True)) for i in
+                    range(1, len(self.items))] + ['P(last)'])
+        plt.yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+
+    def plot_scores(self, tol=1e-5, cdf=False, cmap=None, reverse=False,
+                    title=True, ax=None, scores=None, legend=True,
+                    use_ids=False, _durations=False):
+        """
+        Plot KDE distributions and return distribution medians
+
+        Parameters
+        ----------
+        tol : float, optional
+        cdf : bool, optional
+        cmap : optional
+            Matplotlib cmap
+        reverse : bool, optional
+        title : str, optional
+        ax : optional
+            Matplotlib axis to use
+        scores : dict, optional
+            Model score samples. Will use .score_dists if not provided.
+        legend : bool, optional
+        use_ids : bool, optional
+            Flag to use IDs instead of names in legend
+        _durations
+            Run time data, used by estimate_cost
+
+        Returns
+        -------
+        medians : List
+            List of tuple pairs in the form: (median, Model)
+        """
+        if scores is None:
+            scores = self.score_dists
+        if len(self.items) > 6 and not _durations:
+            if reverse:
+                _value = 1.0
+            else:
+                _value = 0.0
+            colors = [cmap(_value) for _ in self.items]
+        else:
+            if cmap in (cm.gray, cm.gray_r):
+                colors = get_colors(len(self.items), cmap, min_=80/256,
+                                    max_=176/256)
+            else:
+                colors = get_colors(len(self.items), cmap, min_=100/256,
+                                    max_=208/256)
+        colors = cycle(colors)
+        if not ax:
+            plt.figure()
+            ax = plt.gca()
+        for key in ['left', 'top', 'right']:
+            ax.spines[key].set_visible(False)
+        if title is None:
+            pass
+        elif not isinstance(title, bool):
+            ax.set_title(title)
+        elif title:
+            ax.set_title(self.name)
+        all_xs, all_ys, items = list(), list(), list()
+        max_ys = list()
+        for model in self.items:
+            sample = scores[model.id]
+            sample = sample[sample > tol]
+            xs, ys = [_ for _ in sample.index], [_ for _ in sample]
+            median, _ = dist_median(xs,  ys)
+            items.append((median, model, xs, ys))
+            all_xs.extend(xs)
+            all_ys.extend(ys)
+            max_ys.append(max(ys))
+        min_x, max_x = min(all_xs), max(all_xs)
+        all_ys = Series(all_ys)
+        all_ys = all_ys[all_ys < all_ys.mean() + 3 * all_ys.std()]
+        max_ys = Series(max_ys)
+        items.sort(key=itemgetter(0))
+        model_dict = {_model.id: _model for _, _model, _, _ in items}
+        xs = [_xs for _, _, _xs, _ in items]
+        ys = [_ys for _, _, _, _ys in items]
+        if use_ids:
+            labels = [str(_model.id) for _, _model, _, _ in items]
+        else:
+            labels = ['{}: {}'.format(_model.id, _model) for _, _model, _, _ in
+                      items]
+        if len(self.items) > 6:
+            if any(_ for _ in max_ys if _ > max_ys.mean() + 2 * max_ys.std()):
+                height = all_ys.std() * all_ys.median() / all_ys.mean() * 1.5
+            else:
+                height = all_ys.var() * all_ys.median() / all_ys.mean() * 1.5
+            y_ticks = list()
+            for count, (label, x, y) in enumerate(zip(labels, xs, ys)):
+                color = next(colors)
+                y = np.array(y)
+                y_adj = height * count
+                y_ticks.append(y_adj)
+                ax.plot(x, y + y_adj, color=color, label=label)
+                if color == (1.0, 1.0, 1.0, 1.0):
+                    _color = 'k'
+                else:
+                    _color = color
+                ax.fill_between(x, [y_adj for _ in x], y + y_adj,
+                                alpha=0.3, color=_color, label='_nolegend_')
+            if _durations:
+                ax.legend()
+                ax.set_yticks(list())
+                ax.set_yticklabels(list())
+            elif legend:
+                ax.set_yticks(y_ticks)
+                ax.set_yticklabels(labels)
+            else:
+                ax.set_yticks(list())
+                ax.set_yticklabels(list())
+            ax.set_xlim(min_x, max_x)
+            if cdf:
+                ax.set_title(self.name)
+                ys = list()
+                for model, x in zip(self.items, xs):
+                    ys.append(self.score_cdfs[model.id](x))
+                height = all_ys.std() * all_ys.median() / all_ys.mean() * 1.5
+                y_ticks = list()
+                for count, (label, x, y) in enumerate(zip(labels, xs, ys)):
+                    color = next(colors)
+                    y_adj = height * count
+                    y_ticks.append(y_adj)
+                    ax.plot(x, y + y_adj, color=color)
+                    if color != (1.0, 1.0, 1.0, 1.0):
+                        ax.fill_between(x, [y_adj for _ in x], y + y_adj,
+                                        alpha=0.3, color=color)
+                if _durations:
+                    ax.legend()
+                elif legend:
+                    ax.set_yticks(y_ticks)
+                    ax.set_yticklabels(labels)
+                min_, _max = ax.get_ylim()
+                max_ = ((max(ys[-2]) + max(ys[-1])) / 2 + y_ticks[-1]) * 1.1
+                min_ = min_ * max_ / _max
+                ax.set_ylim(min_, max_)
+                ax.set_xlim(min_x, max_x)
+        else:
+            for _, model, xs, ys in items:
+                color = next(colors)
+                ax.plot(xs, ys, label='_nolegend_', color=color)
+                if color != (1.0, 1.0, 1.0, 1.0):
+                    ax.fill_between(xs, [0 for _ in xs], ys, alpha=0.3,
+                                    color=color)
+            all_scores = [_i for _j in self.scores.values() for _i in _j]
+            max_count = max(all_scores.count(_i) for _i in set(all_scores))
+            offset = max(all_ys) / (5 + max_count)
+            handles, plotted_scores = list(), list()
+            markers_ = cycle(markers)
+            for key in sorted(scores):
+                color = next(colors)
+                marker = next(markers_)
+                for count, value in enumerate(self.scores[key]):
+                    if count == 0:
+                        kwargs = {'label': model_dict[key].name}
+                    else:
+                        kwargs = dict()
+                    ax.scatter(
+                        (value,), (offset * plotted_scores.count(value),),
+                        color=color, marker=marker, edgecolors='k', **kwargs)
+                    plotted_scores.append(value)
+            ax.set_yticks(list())
+            if legend:
+                ax.legend()
+            ax.set_xlim(min_x, max_x)
+            if cdf:
+                ax.title(self.name)
+                for _, model, xs, _ in items:
+                    color = next(colors)
+                    ys = self.score_cdfs[model.id](xs)
+                    ax.plot(xs, ys, label=model.name, color=color)
+                    if color != (1.0, 1.0, 1.0, 1.0):
+                        ax.fill_between(xs, [0 for _ in xs], ys, alpha=0.3,
+                                        color=color)
+                if legend:
+                    ax.legend()
+                ax.set_xlim(min_x, max_x)
+        return [(_median, _model) for _median, _model, _, _ in items]
+
+    def prob_level(self, level=1, include=None):
+        """
+        Calculate probability item at a certain level given current
+        scores
+
+        Notes
+        -----
+        - Given that they are independent probabilities, can calculate
+          probability that item_i is at a certain level
+        - P(A or B) = P(A) + P(B) - P(A and B) = P(A) + P(B) - P(A)P(B)
+          due to independence
+        - Not the same as being at least at that level
+        - Probability algorithm for all except lowest level based on
+          inclusion-exclusion principle
+
+        Parameters
+        ----------
+        level : int, optional
+            Default value is one, for probability of being highest
+            fidelity in the set. Can use -1 for last in set.
+        include : List[int], optional
+
+        Returns
+        -------
+        prob_level : Dict[int: float]
+        """
+        probabilities = self.ranking_probabilities()
+        prob_level = list()
+        if not include:
+            include = set(_item.id for _item in self.items)
+        if level == -1:
+            level = len(include)
+        item_ids = set(_item.id for _item in self.items if _item.id in include)
+        if len(item_ids) - level < 0:
+            raise ValueError('Invalid level')
+        for id_ in item_ids:
+            prob_dict = probabilities[id_]
+            others = item_ids.difference({id_})
+            if not len(item_ids) - level:
+                ids = others
+                prob_level.append(np.prod([1 - prob_dict[_id] for _id in ids]))
+            else:
+                cycle_ = cycle([1, -1])
+                ids = [_comb for _comb in
+                       combinations(others, len(item_ids) - level)]
+                probability = 0.0
+                count = 1
+                while True:
+                    sign = next(cycle_)
+                    combinations_ = [set(_comb[0]).union(*_comb[1:]) for _comb
+                                     in combinations(ids, count)]
+                    for combination in combinations_:
+                        probability_ = np.prod(
+                            [prob_dict[_id] for _id in combination])
+                        probability += sign * probability_
+                    if len(combinations_) == 1:
+                        break
+                    else:
+                        count += 1
+                prob_level.append(probability)
+        prob_level_ = list(prob_level)
+        values = np.array(prob_level)
+        values /= sum(values)  # normalize
+        prob_level = dict()
+        for id_, value in zip(item_ids, values):
+            prob_level[id_] = value
+        return prob_level
+
+    def ranking_probabilities(self, num_samples=1000, plot=False):
+        """
+        Calculate probabilities that each item scores higher than
+        another so probability ranking can be calculated
+
+        Notes
+        -----
+        - Based on using KDE for creation of distributions
+          - Independent Gaussian distributions
+          - Assumes each point generates a centered Gaussian distribution
+          - KDE bandwidth is equivalent to the variance
+          - P(X > Y) = P(X - Y > 0)
+          - X(\mu_X, \sigma_X^2) - Y(\mu_Y, \sigma_Y^2) =
+            => Z(\mu_X - \mu_Y, \sigma_X^2 + \sigma_Y^2)
+          - Regenerate subtracted distribution and integrate to get
+            P(X - Y > 0) then P(Y > X) = 1 - P(X - Y > 0)
+        - Tested using correlation (commented section, obsolete)
+          - \sigma_{X+Y}^2 = \sigma_X^2 + \sigma_Y^2 + 2\rho\sigma_X\sigma_Y
+          - \rho is Pearson correlation coefficient
+          - However, this is widening the spread of the distribution if
+            they are more correlated, which is the opposite of the goal
+            here
+          - Seems to be aliasing two concepts since this distribution is
+            of the fidelity score, not the distribution of the results
+
+        Parameters
+        ----------
+        num_samples : int, optional
+            Number of samples to use for KDE. Default value is 1000.
+        plot : bool, optional
+            Flag to plot results. Default value is False.
+
+        Returns
+        -------
+        probabilities
+        """
+        if self._pairwise_probabilities:
+            return self._pairwise_probabilities
+        if plot:
+            plt.figure()
+        probabilities = {_item.id: dict() for _item in self.items}
+        xs = np.linspace(-2, 2, num_samples)
+        for items in combinations(self.items, 2):
+            ids = sorted([_item.id for _item in items])
+            estimators = [self._estimators[_id] for _id in ids]
+            bandwidths = [_est.bandwidth for _est in estimators]
+            bandwidth = sum(bandwidths)  # sum variance
+            kde = KernelDensity(bandwidth=bandwidth)
+            id0, id1 = ids
+            scores = self.scores[id0] - self.scores[id1]
+            kde.fit(np.array(scores)[:, None], sample_weight=self.weights)
+            ys = np.exp(kde.score_samples(xs[:, np.newaxis]))
+            if plot:
+                plt.plot(xs, ys, label='{}, {}'.format(*ids))
+                plt.fill_between(xs, [0 for _ in xs], ys, alpha=0.3)
+            spline = InterpolatedUnivariateSpline(xs, ys)
+            prob = spline.integral(0, 2)
+            probabilities[id0][id1] = prob
+            probabilities[id1][id0] = 1 - prob
+        if plot:
+            plt.legend()
+            _, y_max = plt.ylim()
+            plt.vlines(0, 0, y_max)
+            plt.yticks(list())
+        self._pairwise_probabilities = probabilities
+        return probabilities
+
+    def score_mean(self, key):
+        xs = self.score_dists[key].index.values
+        ys = self.score_dists[key].values
+        spline = InterpolatedUnivariateSpline(xs, xs * ys)
+        return spline.integral(xs[0], xs[-1])
+
+    def score_median(self, key):
+        return self.score_percentile(key, 50)
+
+    def score_mode(self, key):
+        return self.score_dists[key].idxmax()
+
+    def score_percentile(self, key, percent):
+        """
+        Find quantile of distribution curve
+
+        Notes
+        -----
+        Percentages are measured from x = 1 down
+
+        Parameters
+        ----------
+        key : int
+        percent : float
+            Percentage value from 0-100%
+
+        Returns
+        -------
+        quantile : float
+        """
+        xs = self.score_dists[key].index.values
+        spline = self.score_pdfs[key]
+        total = spline.integral(xs[0], xs[-1])
+
+        def fun(x):
+            area = total - spline.integral(xs[0], x)
+            return area / total - percent / 100
+
+        return brentq(fun, xs[0], xs[-1])
+
+    def score_std(self, key):
+        return sqrt(self.score_var(key))
+
+    def score_var(self, key):
+        return self._estimators[key].bandwidth
+        # mu = self.score_mean(key)
+        # xs = self.score_dists[key].index.values
+        # ys = self.score_dists[key].values
+        # spline = InterpolatedUnivariateSpline(xs, (xs - mu) ** 2 * ys)
+        # return spline.integral(xs[0], xs[-1])
+
+
+class ModelRanking(Ranking):
+    permutation_limit = 9, 6  # model limit, permutation limit
+
+    def __init__(self, models, name=None, _rankings=None, _scores=None,
+                 _weights=None, _score_dists=None, _estimators=None):
+        """
+        Ranking of models based on some criterion
+
+        Parameters
+        ----------
+        models : List[Model]
+        name : str, optional
+        _rankings : List[Ranking], optional
+            Ranking objects for derived rankings
+        _scores : Dict[int: list], optional
+            Scores to derive distribution
+        _weights : List[float], optional
+            KDE weights corresponding to scores
+        _score_dists : Dict[int: Series], optional
+            KDE-generated score distribution
+        _estimators : Dict[int: KernelDensity], optional
+            Kernel Density estimation objects for current state
+        """
+        super().__init__(models, name, _rankings, _scores, _weights,
+                         _score_dists, _estimators)
+
+    @property
+    def models(self):
+        return self.items
 
     def correlation_scoring(self, input_columns, output_columns,
                             remove_duplicates=True):
@@ -830,10 +1450,10 @@ class ModelRanking(RankedOrder):
         scores : dict[int: tuple[float]]
             Model ID associated with an R^2 and RMSE total
         """
-        r2s = {_model.id: dict() for _model in self.models}
-        rmses = {_model.id: dict() for _model in self.models}
-        for model in self.models:
-            for model_ in self.models:
+        r2s = {_model.id: dict() for _model in self.items}
+        rmses = {_model.id: dict() for _model in self.items}
+        for model in self.items:
+            for model_ in self.items:
                 if model == model_:
                     continue
                 inputs, (outputs, outputs_) = model.get_shared(
@@ -886,30 +1506,6 @@ class ModelRanking(RankedOrder):
         scores = r2_scores, rmse_scores
         return correlations, scores
 
-    def describe(self, key, percentiles=None):
-        """
-        Custom describe call for score series
-
-        Parameters
-        ----------
-        key : int
-            Score model key
-        percentiles : List[float], optional
-
-        Returns
-        -------
-        description : Series
-        """
-        labels = ['count', 'mean', 'mode', 'std']
-        values = [len(self.score_dists[key]), self.score_mean(key),
-                  self.score_mode(key), self.score_std(key)]
-        if not percentiles:
-            percentiles = [25, 50, 75]
-        for percentile in percentiles:
-            labels.append('{}%'.format(percentile))
-            values.append(self.score_percentile(key, percentile))
-        return Series(values, index=labels)
-
     def _efficiency_scoring(
             self, input_columns, time_columns=None, remove_outlier=True,
             plot=False, cmap=None, use_kde=False):
@@ -947,7 +1543,7 @@ class ModelRanking(RankedOrder):
             dark_background=False):
         score = self._efficiency_scoring(
             input_columns, time_columns, remove_outlier, plot, cmap, use_kde)
-        ids = [_model.id for _model in self.models]
+        ids = [_model.id for _model in self.items]
         scores = list()
         stop = self._get_stop(len(ids))
         for i in range(1, stop):
@@ -968,7 +1564,7 @@ class ModelRanking(RankedOrder):
                     cmap_ = cm.gray
                 color = cmap_(0.0)
                 plt.subplot(1, 5, (1, 3))
-                if len(self.models) < 6:
+                if len(self.items) < 6:
                     plt.bar(scores.index, scores.score, color=color)
                 else:
                     plt.plot(scores.index, scores.score, color=color)
@@ -992,7 +1588,7 @@ class ModelRanking(RankedOrder):
                 for id_ in [int(_) for _ in order.split(', ')]:
                     frequency[id_] += 1
             bottom, total = 0, sum(frequency.values())
-            colors = iter(get_colors(len(self.models), cmap, max_=200/256))
+            colors = iter(get_colors(len(self.items), cmap, max_=200/256))
             for id_ in sorted(ids):
                 freq = frequency[id_]
                 bar = plt.bar(0, freq, bottom=bottom, color=next(colors))
@@ -1011,14 +1607,14 @@ class ModelRanking(RankedOrder):
                       plot=False, cmap=None, use_kde=False, use_ids=False,
                       tight=False, save=False):
         if time_columns is not None:
-            for model in self.models:
+            for model in self.items:
                 model.data['_t'] = sum(
                     model.data[_col] for _col in time_columns)
-        ids = [_model.id for _model in self.models]
+        ids = [_model.id for _model in self.items]
         costs, stds = list(), list()
         if plot:  # distributions
             scores = dict()
-        for model in self.models:
+        for model in self.items:
             ts = model.data._t
             if remove_outlier:
                 # print(repr(model))
@@ -1049,20 +1645,20 @@ class ModelRanking(RankedOrder):
             ax.set_xlabel('Cost (s)')
             if save:
                 plt.savefig('{}-cost-dists-{}{}'.format(
-                    self.name.lower(), len(self.models), save))
+                    self.name.lower(), len(self.items), save))
         if plot:  # bar chart
             _costs = [(_str, _median, _std) for (_str, _median), _std in
                       zip(costs, stds)]
             _costs = DataFrame(_costs, index=ids,
                                columns=['Model', 'Cost', 'Err'])
-            colors = self._get_colors(len(self.models), cmap)
+            colors = self._get_colors(len(self.items), cmap)
             plt.figure()
             _costs = _costs.sort_values('Cost')
             plt.bar(_costs.index, _costs['Cost'], color=colors)
             plt.xlabel('Model ID')
             plt.ylabel('Estimated Cost (s)')
-            plt.xticks(range(1, len(self.models) + 1),
-                       range(1, len(self.models) + 1))
+            plt.xticks(range(1, len(self.items) + 1),
+                       range(1, len(self.items) + 1))
             ax = plt.gca()
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
@@ -1070,7 +1666,7 @@ class ModelRanking(RankedOrder):
                 plt.tight_layout()
             if save:
                 plt.savefig('{}-costs-{}{}'.format(
-                    self.name.lower(), len(self.models), save))
+                    self.name.lower(), len(self.items), save))
         costs = DataFrame(costs, index=ids, columns=['Model', 'Cost'])
         return costs
 
@@ -1080,14 +1676,14 @@ class ModelRanking(RankedOrder):
         # TODO: find median of duplicates?
         if time_columns is None:
             time_columns = ['_t']
-            if any('_t' not in _model.data.columns for _model in self.models):
+            if any('_t' not in _model.data.columns for _model in self.items):
                 raise ValueError('Times not yet compiled, must define columns')
         else:
-            for model in self.models:
+            for model in self.items:
                 model.data['_t'] = sum(
                     model.data[_col] for _col in time_columns)
         crs = dict()
-        for model, model_ in combinations(self.models, 2):
+        for model, model_ in combinations(self.items, 2):
             inputs, (outputs, outputs_) = model.get_shared(
                 model_, input_columns, time_columns, True)
             cr, cr_ = outputs / outputs_, outputs_ / outputs
@@ -1103,16 +1699,16 @@ class ModelRanking(RankedOrder):
                 median, median_ = np.median(cr), np.median(cr_)
             crs[model_.id, model.id] = median
             crs[model.id, model_.id] = median_
-        # crs_ = np.ones((len(self.models), len(self.models)))  # array
-        # for i in range(len(self.models)):
-        #     for j in range(len(self.models)):
+        # crs_ = np.ones((len(self.items), len(self.items)))  # array
+        # for i in range(len(self.items)):
+        #     for j in range(len(self.items)):
         #         if i == j:
         #             continue
         #         crs_[i, j] = crs[i + 1, j + 1]
         if plot:  # bar chart
             crs_ = list()
-            for i in range(len(self.models)):
-                for j in range(len(self.models)):
+            for i in range(len(self.items)):
+                for j in range(len(self.items)):
                     if i >= j:
                         continue
                     min_, max_ = sorted((crs[i + 1, j + 1],
@@ -1135,15 +1731,6 @@ class ModelRanking(RankedOrder):
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
         return crs
-
-    @staticmethod
-    def _get_colors(num, cmap, reverse=False):
-        cmap = cm.get_cmap(cmap)
-        if cmap(0) in (cm.gray(0), cm.gray(256)):
-            min_, max_ = 80 / 256., 176 / 256.
-        else:
-            min_, max_ = 48 / 256, 208 / 256
-        return get_colors(num, cmap, reverse, min_, max_)
 
     def get_duplicate_models(
             self, input_columns, output_columns, r2_tol=0.95, rmse_tol=1e-2,
@@ -1183,7 +1770,7 @@ class ModelRanking(RankedOrder):
         for couple_ in duplicate_set:
             couple = list()
             for id_ in couple_:
-                for model in self.models:
+                for model in self.items:
                     if model.id == id_:
                         couple.append(model)
             duplicates.append(tuple(couple))
@@ -1204,7 +1791,7 @@ class ModelRanking(RankedOrder):
             axarr[1].set_xticks(list())
             axarr[1].set_xlabel('RMSE')
             # axarr[1].set_yscale('log')
-            offset, jitter, sign = 0, 1 / len(self.models), +1
+            offset, jitter, sign = 0, 1 / len(self.items), +1
             r2_set, rmse_set = set(), set()
             couples = set()
             for key in sorted(r2s):
@@ -1272,7 +1859,7 @@ class ModelRanking(RankedOrder):
             inputs, outputs = _io
         else:
             inputs, outputs = self.map_io(input_columns, output_columns)
-        for model in self.models:
+        for model in self.items:
             io = inputs[model.id], outputs[model.id]
             regressors[model.id] = model.get_gpr(
                 input_columns, output_columns, kernel, num_test, io)
@@ -1286,35 +1873,6 @@ class ModelRanking(RankedOrder):
             warn('Permutation limit exceeded, orders truncated')
             stop = max((perm_lim, model_lim - (size - model_lim)))
         return stop
-
-    @staticmethod
-    def _get_weights(weights):
-        weights_ = list(weights)
-        while True:
-            weights = list()
-
-            def simplify(current):
-                updated = list()
-                for i in current:
-                    if not isinstance(i, list):
-                        updated.append(i)
-                    else:
-                        if not any(isinstance(j, list) for j in i):
-                            updated.extend(normalize(i))
-                        elif all(not any(isinstance(k, list) for k in j) for j
-                                 in i):
-                            updated.extend(flatten(i))
-                        else:
-                            simplify(i)
-                weights.append(updated)
-
-            simplify(weights_)
-            if len(weights) == 1 and not any(
-                    isinstance(i, list) for i in weights[0]):
-                weights = normalize(weights[0])
-                return weights
-            else:
-                weights_ = weights
 
     def map_io(self, input_columns, output_columns, remove_duplicates=True):
         """
@@ -1340,7 +1898,7 @@ class ModelRanking(RankedOrder):
         inputs, outputs : dict[int: array[float]]
         """
         inputs, outputs = dict(), dict()
-        for model in self.models:
+        for model in self.items:
             try:
                 inputs_, outputs_ = model.map_io(
                     input_columns, output_columns, remove_duplicates)
@@ -1351,16 +1909,11 @@ class ModelRanking(RankedOrder):
                 outputs[model.id] = outputs_
         return inputs, outputs
 
-    @property
-    def models(self):
-        return self._models
-
     def multiattribute_scoring(
             self, input_columns, time_columns=None, remove_outlier=True,
             use_kde=False, plot=False, cmap=None, plot_single=False):
         """
         TODO: add capability to use more than one fidelity estimate
-        Would require use of fast_non_dominated_sorting instead of 2-D
 
         Parameters
         ----------
@@ -1380,7 +1933,7 @@ class ModelRanking(RankedOrder):
         score_fid = self._multifidelity_scoring()
         score_eff = self._efficiency_scoring(
             input_columns, time_columns, remove_outlier, False, cmap, use_kde)
-        ids, order_scores = [_model.id for _model in self.models], list()
+        ids, order_scores = [_model.id for _model in self.items], list()
         single = [(_id, score_fid((_id,)), score_eff((_id,))) for _id in ids]
         single = DataFrame(single, columns=('order', 'fidelity', 'efficiency'))
         single['_fidelity'] = 1 / single.fidelity
@@ -1423,10 +1976,10 @@ class ModelRanking(RankedOrder):
             return _updated
 
         count = 0
-        for i in range(2, len(self.models) + 1):
+        for i in range(2, len(self.items) + 1):
             t0 = time()
             j, new_scores = 0, list()
-            num = num_permutations(len(self.models), stop=i - 1)
+            num = num_permutations(len(self.items), stop=i - 1)
             for k, order in enumerate(permutations(ids, i)):
                 key = ', '.join(str(_) for _ in order)
                 fidelity = score_fid(order)
@@ -1487,7 +2040,7 @@ class ModelRanking(RankedOrder):
         -------
         fun
         """
-        ids = [_model.id for _model in self.models]
+        ids = [_model.id for _model in self.items]
         """ Option 1: original, model probabilities directly """
         # prob_first = dict()
         # for i in range(2, len(ids) + 1):
@@ -1617,9 +2170,9 @@ class ModelRanking(RankedOrder):
         """
         start = 1
         get_score = self._multifidelity_scoring()
-        ids = [_model.id for _model in self.models]
+        ids = [_model.id for _model in self.items]
         scores = list()
-        stop = self._get_stop(len(self.models))
+        stop = self._get_stop(len(self.items))
         for i in range(start, stop):
             for order in permutations(ids, i):
                 score = get_score(order)
@@ -1638,7 +2191,7 @@ class ModelRanking(RankedOrder):
                     cmap_ = cm.gray
                 color = cmap_(0.0)
                 plt.subplot(1, 5, (1, 3))
-                if len(self.models) < 6:
+                if len(self.items) < 6:
                     plt.bar(scores.index, scores.score, color=color)
                 else:
                     plt.plot(scores.index, scores.score, color=color)
@@ -1663,10 +2216,10 @@ class ModelRanking(RankedOrder):
                     frequency[id_] += 1
             bottom, total = 0, sum(frequency.values())
             if cmap in (cm.gray, cm.gray_r):
-                colors = get_colors(len(self.models), cmap, min_=80/256,
+                colors = get_colors(len(self.items), cmap, min_=80/256,
                                     max_=176/256)
             else:
-                colors = get_colors(len(self.models), cmap, min_=48/256,
+                colors = get_colors(len(self.items), cmap, min_=48/256,
                                     max_=208/256)
             colors = iter(colors)
             for id_ in sorted(ids):
@@ -1684,527 +2237,4 @@ class ModelRanking(RankedOrder):
             plt.xticks([0.0], ['{}% Freq'.format(threshold)])
         return scores
 
-    @property
-    def name(self):
-        if not self._name:
-            if not self._rankings:
-                raise AttributeError('Name not defined')
-            else:
-                count = 0
-                names = list()
-                for ranking in self._rankings:
-                    try:
-                        name = ranking.name
-                    except AttributeError:
-                        count += 1
-                    else:
-                        names.append(name)
-                if not count:
-                    name = ', '.join(names[:-1]) + ', and {}'.format(names[-1])
-                else:
-                    if not names:
-                        name = '{} rankings'.format(count)
-                    else:
-                        name = ', '.join(names)
-                        name += ', and {} other'.format(count)
-                        if count > 1:
-                            name += 's'
-                return name.title()
-        else:
-            return self._name.title()
 
-    def plot_scores(self, tol=1e-5, cdf=False, cmap=None, reverse=False,
-                    title=True, ax=None, scores=None, legend=True,
-                    use_ids=False, _durations=False):
-        """
-        Plot KDE distributions and return distribution medians
-
-        Parameters
-        ----------
-        tol : float, optional
-        cdf : bool, optional
-        cmap : optional
-            Matplotlib cmap
-        reverse : bool, optional
-        title : str, optional
-        ax : optional
-            Matplotlib axis to use
-        scores : dict, optional
-            Model score samples. Will use .score_dists if not provided.
-        legend : bool, optional
-        use_ids : bool, optional
-            Flag to use IDs instead of names in legend
-        _durations
-            Run time data, used by estimate_cost
-
-        Returns
-        -------
-        medians : List
-            List of tuple pairs in the form: (median, Model)
-        """
-        if scores is None:
-            scores = self.score_dists
-        if len(self.models) > 6 and not _durations:
-            if reverse:
-                _value = 1.0
-            else:
-                _value = 0.0
-            colors = [cmap(_value) for _ in self.models]
-        else:
-            if cmap in (cm.gray, cm.gray_r):
-                colors = get_colors(len(self.models), cmap, min_=80/256,
-                                    max_=176/256)
-            else:
-                colors = get_colors(len(self.models), cmap, min_=100/256,
-                                    max_=208/256)
-        colors = cycle(colors)
-        if not ax:
-            plt.figure()
-            ax = plt.gca()
-        for key in ['left', 'top', 'right']:
-            ax.spines[key].set_visible(False)
-        if title is None:
-            pass
-        elif not isinstance(title, bool):
-            ax.set_title(title)
-        elif title:
-            ax.set_title(self.name)
-        all_xs, all_ys, models = list(), list(), list()
-        max_ys = list()
-        for model in self.models:
-            sample = scores[model.id]
-            sample = sample[sample > tol]
-            xs, ys = [_ for _ in sample.index], [_ for _ in sample]
-            median, _ = dist_median(xs,  ys)
-            models.append((median, model, xs, ys))
-            all_xs.extend(xs)
-            all_ys.extend(ys)
-            max_ys.append(max(ys))
-        min_x, max_x = min(all_xs), max(all_xs)
-        all_ys = Series(all_ys)
-        all_ys = all_ys[all_ys < all_ys.mean() + 3 * all_ys.std()]
-        max_ys = Series(max_ys)
-        models.sort(key=itemgetter(0))
-        model_dict = {_model.id: _model for _, _model, _, _ in models}
-        xs = [_xs for _, _, _xs, _ in models]
-        ys = [_ys for _, _, _, _ys in models]
-        if use_ids:
-            labels = [str(_model.id) for _, _model, _, _ in models]
-        else:
-            labels = ['{}: {}'.format(_model.id, _model) for _, _model, _, _ in
-                      models]
-        if len(self.models) > 6:
-            if any(_ for _ in max_ys if _ > max_ys.mean() + 2 * max_ys.std()):
-                height = all_ys.std() * all_ys.median() / all_ys.mean() * 1.5
-            else:
-                height = all_ys.var() * all_ys.median() / all_ys.mean() * 1.5
-            y_ticks = list()
-            for count, (label, x, y) in enumerate(zip(labels, xs, ys)):
-                color = next(colors)
-                y = np.array(y)
-                y_adj = height * count
-                y_ticks.append(y_adj)
-                ax.plot(x, y + y_adj, color=color, label=label)
-                if color == (1.0, 1.0, 1.0, 1.0):
-                    _color = 'k'
-                else:
-                    _color = color
-                ax.fill_between(x, [y_adj for _ in x], y + y_adj,
-                                alpha=0.3, color=_color, label='_nolegend_')
-            if _durations:
-                ax.legend()
-                ax.set_yticks(list())
-                ax.set_yticklabels(list())
-            elif legend:
-                ax.set_yticks(y_ticks)
-                ax.set_yticklabels(labels)
-            else:
-                ax.set_yticks(list())
-                ax.set_yticklabels(list())
-            ax.set_xlim(min_x, max_x)
-            if cdf:
-                ax.set_title(self.name)
-                ys = list()
-                for model, x in zip(self.models, xs):
-                    ys.append(self.score_cdfs[model.id](x))
-                height = all_ys.std() * all_ys.median() / all_ys.mean() * 1.5
-                y_ticks = list()
-                for count, (label, x, y) in enumerate(zip(labels, xs, ys)):
-                    color = next(colors)
-                    y_adj = height * count
-                    y_ticks.append(y_adj)
-                    ax.plot(x, y + y_adj, color=color)
-                    if color != (1.0, 1.0, 1.0, 1.0):
-                        ax.fill_between(x, [y_adj for _ in x], y + y_adj,
-                                        alpha=0.3, color=color)
-                if _durations:
-                    ax.legend()
-                elif legend:
-                    ax.set_yticks(y_ticks)
-                    ax.set_yticklabels(labels)
-                min_, _max = ax.get_ylim()
-                max_ = ((max(ys[-2]) + max(ys[-1])) / 2 + y_ticks[-1]) * 1.1
-                min_ = min_ * max_ / _max
-                ax.set_ylim(min_, max_)
-                ax.set_xlim(min_x, max_x)
-        else:
-            for _, model, xs, ys in models:
-                color = next(colors)
-                ax.plot(xs, ys, label='_nolegend_', color=color)
-                if color != (1.0, 1.0, 1.0, 1.0):
-                    ax.fill_between(xs, [0 for _ in xs], ys, alpha=0.3,
-                                    color=color)
-            all_scores = [_i for _j in self.scores.values() for _i in _j]
-            max_count = max(all_scores.count(_i) for _i in set(all_scores))
-            offset = max(all_ys) / (5 + max_count)
-            handles, plotted_scores = list(), list()
-            markers_ = cycle(markers)
-            for key in sorted(scores):
-                color = next(colors)
-                marker = next(markers_)
-                for count, value in enumerate(self.scores[key]):
-                    if count == 0:
-                        kwargs = {'label': model_dict[key].name}
-                    else:
-                        kwargs = dict()
-                    ax.scatter(
-                        (value,), (offset * plotted_scores.count(value),),
-                        color=color, marker=marker, edgecolors='k', **kwargs)
-                    plotted_scores.append(value)
-            ax.set_yticks(list())
-            if legend:
-                ax.legend()
-            ax.set_xlim(min_x, max_x)
-            if cdf:
-                ax.title(self.name)
-                for _, model, xs, _ in models:
-                    color = next(colors)
-                    ys = self.score_cdfs[model.id](xs)
-                    ax.plot(xs, ys, label=model.name, color=color)
-                    if color != (1.0, 1.0, 1.0, 1.0):
-                        ax.fill_between(xs, [0 for _ in xs], ys, alpha=0.3,
-                                        color=color)
-                if legend:
-                    ax.legend()
-                ax.set_xlim(min_x, max_x)
-        return [(_median, _model) for _median, _model, _, _ in models]
-
-    def plot_score_bars(self, cmap=None):
-        """
-        Plots stacked bar charts of probabilities that each model is 1st
-        through last based on scores
-
-        Parameters
-        ----------
-        cmap
-        """
-        prob_levels = [self.prob_level(_) for _ in
-                       range(1, len(self.models) + 1)]
-        plt.figure()
-        for i, scores in enumerate(prob_levels):
-            plot_proportion(i, scores, cmap=cmap, models=self.models,
-                            legend=False)
-        plt.xticks(range(len(self.models)),
-                   ['P({}$^{{{}}}$)'.format(i, ordinal(i, True)) for i in
-                    range(1, len(self.models))] + ['P(last)'])
-        plt.yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-
-    def prob_level(self, level=1, include=None):
-        """
-        Calculate probability model at a certain level given current
-        scores
-
-        Notes
-        -----
-        - Given that they are independent probabilities, can calculate
-          probability that model_i is at a certain level
-        - P(A or B) = P(A) + P(B) - P(A and B) = P(A) + P(B) - P(A)P(B)
-          due to independence
-        - Not the same as being at least at that level
-        - Probability algorithm for all except lowest level based on
-          inclusion-exclusion principle
-
-        Parameters
-        ----------
-        level : int, optiona
-            Default value is one, for probability of being highest
-            fidelity in the set. Can use -1 for last in set.
-        include : List[int], optional
-
-        Returns
-        -------
-        prob_level : Dict[int: float]
-        """
-        probabilities = self.ranking_probabilities()
-        prob_level = list()
-        if not include:
-            include = set(_model.id for _model in self.models)
-        if level == -1:
-            level = len(include)
-        model_ids = set(
-            _model.id for _model in self.models if _model.id in include)
-        if len(model_ids) - level < 0:
-            raise ValueError('Invalid level')
-        for id_ in model_ids:
-            prob_dict = probabilities[id_]
-            others = model_ids.difference({id_})
-            if not len(model_ids) - level:
-                ids = others
-                prob_level.append(np.prod([1 - prob_dict[_id] for _id in ids]))
-            else:
-                cycle_ = cycle([1, -1])
-                ids = [_comb for _comb in
-                       combinations(others, len(model_ids) - level)]
-                probability = 0.0
-                count = 1
-                while True:
-                    sign = next(cycle_)
-                    combinations_ = [set(_comb[0]).union(*_comb[1:]) for _comb
-                                     in combinations(ids, count)]
-                    for combination in combinations_:
-                        probability_ = np.prod(
-                            [prob_dict[_id] for _id in combination])
-                        probability += sign * probability_
-                    if len(combinations_) == 1:
-                        break
-                    else:
-                        count += 1
-                prob_level.append(probability)
-        prob_level_ = list(prob_level)
-        values = np.array(prob_level)
-        values /= sum(values)  # normalize
-        prob_level = dict()
-        for id_, value in zip(model_ids, values):
-            prob_level[id_] = value
-        return prob_level
-
-    def ranking_probabilities(self, num_samples=1000, plot=False):
-        """
-        Calculate probabilities that each model is higher than another
-        model so probability of ranking can be calculated
-
-        Notes
-        -----
-        - Based on using KDE for creation of distributions
-          - Independent Gaussian distributions
-          - Assumes each point generates a centered Gaussian distribution
-          - KDE bandwidth is equivalent to the variance
-          - P(X > Y) = P(X - Y > 0)
-          - X(\mu_X, \sigma_X^2) - Y(\mu_Y, \sigma_Y^2) =
-            => Z(\mu_X - \mu_Y, \sigma_X^2 + \sigma_Y^2)
-          - Regenerate subtracted distribution and integrate to get
-            P(X - Y > 0) then P(Y > X) = 1 - P(X - Y > 0)
-        - Tested using correlation (commented section, obsolete)
-          - \sigma_{X+Y}^2 = \sigma_X^2 + \sigma_Y^2 + 2\rho\sigma_X\sigma_Y
-          - \rho is Pearson correlation coefficient
-          - However, this is widening the spread of the distribution if
-            they are more correlated, which is the opposite of the goal
-            here
-          - Seems to be aliasing two concepts since this distribution is
-            of the model fidelity score, not the distribution of the
-            model's results
-
-        Parameters
-        ----------
-        num_samples
-        plot
-
-        Returns
-        -------
-        probabilities
-        """
-        if self._pairwise_probabilities:
-            return self._pairwise_probabilities
-        if plot:
-            plt.figure()
-        probabilities = {_model.id: dict() for _model in self.models}
-        xs = np.linspace(-2, 2, num_samples)
-        for models in combinations(self.models, 2):
-            ids = sorted([_model.id for _model in models])
-            estimators = [self._estimators[_id] for _id in ids]
-            bandwidths = [_est.bandwidth for _est in estimators]
-            bandwidth = sum(bandwidths)  # sum variance
-            kde = KernelDensity(bandwidth=bandwidth)
-            id0, id1 = ids
-            scores = self.scores[id0] - self.scores[id1]
-            kde.fit(np.array(scores)[:, None], sample_weight=self.weights)
-            ys = np.exp(kde.score_samples(xs[:, np.newaxis]))
-            if plot:
-                plt.plot(xs, ys, label='{}, {}'.format(*ids))
-                plt.fill_between(xs, [0 for _ in xs], ys, alpha=0.3)
-            spline = InterpolatedUnivariateSpline(xs, ys)
-            prob = spline.integral(0, 2)
-            probabilities[id0][id1] = prob
-            probabilities[id1][id0] = 1 - prob
-        if plot:
-            plt.legend()
-            _, y_max = plt.ylim()
-            plt.vlines(0, 0, y_max)
-            plt.yticks(list())
-        self._pairwise_probabilities = probabilities
-        return probabilities
-
-    @property
-    def scores(self):
-        """
-        Fidelity scores used to estimate model densities, can be
-        developed from expert opinions or model data
-
-        Returns
-        -------
-        scores : Dict
-        """
-        if not self._scores:
-            raise AttributeError('Order scores not yet created')
-        return self._scores
-
-    @scores.setter
-    def scores(self, scores):
-        """
-        Setter for modified scores
-
-        Notes
-        -----
-        Sets/resets bounds and distribution splines
-
-        Parameters
-        ----------
-        scores : Dict
-        """
-        self._scores = scores
-        self._bounds, self._weights = None, None
-        self._score_pdfs, self._score_cdfs = dict(), dict()
-
-    @property
-    def score_cdfs(self):
-        if not self._score_cdfs:
-            self._score_cdfs, pdfs = dict(), self.score_pdfs
-            for model in self.models:
-                id_ = model.id
-                pdf = pdfs[id_]
-                xs = self.score_dists[id_].index.values
-                x_ = xs[-1]
-                ys = [pdf.integral(_x, x_) for _x in xs]
-                min_, max_ = self.bounds
-                if xs[0] > min_:
-                    xs = np.append([min_], xs)
-                    ys = np.append([0.0], ys)
-                if xs[-1] < max_:
-                    xs = np.append(xs, [max_])
-                    ys = np.append(ys, [0.0])
-                cdf = InterpolatedUnivariateSpline(xs, ys)
-                self._score_cdfs[id_] = cdf
-        return self._score_cdfs
-
-    @property
-    def score_dists(self):
-        """
-        Scores derived from expert-generated ranked orders for derived
-        rankings
-
-        Returns
-        -------
-        scores : Dict
-        """
-        if not self._score_dists:
-            raise AttributeError('Order score distributions not yet created')
-        return self._score_dists
-
-    def score_mean(self, key):
-        xs = self.score_dists[key].index.values
-        ys = self.score_dists[key].values
-        spline = InterpolatedUnivariateSpline(xs, xs * ys)
-        return spline.integral(xs[0], xs[-1])
-
-    def score_median(self, key):
-        return self.score_percentile(key, 50)
-
-    def score_mode(self, key):
-        return self.score_dists[key].idxmax()
-
-    @property
-    def score_pdfs(self):
-        if not self._score_pdfs:
-            self._score_pdfs = dict()
-            for model in self.models:
-                key = model.id
-                scores = self.score_dists[key]
-                xs = scores.index.values
-                ys = scores.values
-                min_, max_ = self.bounds
-                if xs[0] > min_:
-                    xs = np.append([min_], xs)
-                    ys = np.append([0.0], ys)
-                if xs[-1] < max_:
-                    xs = np.append(xs, [max_])
-                    ys = np.append(ys, [0.0])
-                pdf = InterpolatedUnivariateSpline(xs, ys)
-                self._score_pdfs[key] = pdf
-        return self._score_pdfs
-
-    def score_percentile(self, key, percent):
-        """
-        Find quantile of distribution curve
-
-        Notes
-        -----
-        Percentages are measured from x = 1 down
-
-        Parameters
-        ----------
-        key : int
-        percent : float
-            Percentage value from 0-100%
-
-        Returns
-        -------
-        quantile : float
-        """
-        xs = self.score_dists[key].index.values
-        spline = self.score_pdfs[key]
-        total = spline.integral(xs[0], xs[-1])
-
-        def fun(x):
-            area = total - spline.integral(xs[0], x)
-            return area / total - percent / 100
-
-        return brentq(fun, xs[0], xs[-1])
-
-    def score_std(self, key):
-        return sqrt(self.score_var(key))
-
-    def score_var(self, key):
-        return self._estimators[key].bandwidth
-        # mu = self.score_mean(key)
-        # xs = self.score_dists[key].index.values
-        # ys = self.score_dists[key].values
-        # spline = InterpolatedUnivariateSpline(xs, (xs - mu) ** 2 * ys)
-        # return spline.integral(xs[0], xs[-1])
-
-    @property
-    def weights(self):
-        """
-        Weights corresponding to fidelity scores
-
-        Returns
-        -------
-        weights : List
-        """
-        if not self._weights:
-            raise AttributeError('Order weights not yet created')
-        return self._weights
-
-    @weights.setter
-    def weights(self, weights):
-        """
-        Setter for modified weights
-
-        Notes
-        -----
-        Sets/resets bounds and distribution splines
-
-        Parameters
-        ----------
-        weights : List
-        """
-        self._weights = weights

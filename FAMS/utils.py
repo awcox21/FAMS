@@ -418,7 +418,7 @@ def pareto_front(scores):
             for i, flag in enumerate(pareto) if flag]
 
 
-def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
+def plot_proportion(x, scores, width=0.8, new_fig=False, items=None,
                     cmap=None, legend=False):
     """
     Plot proportions in a stacked bar chart at location x with given
@@ -430,7 +430,7 @@ def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
     scores : Dict[str: float]
     width : float, optional
     new_fig : bool, optional, optional
-    models : List[Model], optional
+    items : List, optional
     cmap
     legend : bool, optional
     """
@@ -443,15 +443,15 @@ def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
     bottom = 0
     for c, key in zip(colors, sorted(scores)):
         score = scores[key]
-        if models:
-            for model in models:
-                if model.id == key:
+        if items:
+            for item in items:
+                if item.id == key:
                     break
             else:
-                raise AttributeError('No matching model ID')
-            kwargs = {'label': str(model)}
+                raise AttributeError('No matching item ID')
+            kwargs = {'label': str(item)}
         else:
-            kwargs = {'label': 'Model {}'.format(key)}
+            kwargs = {'label': 'Item {}'.format(key)}
         bar = plt.bar(x, score, width, bottom, color=c, **kwargs)
         ax = plt.gca()
         for rect in bar:
