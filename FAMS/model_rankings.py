@@ -39,7 +39,39 @@ markers.sort(key=itemgetter(1))
 markers = [key for key, _ in markers]
 
 
-class Model(object):
+class Item(object):
+    def __init__(self, name=None, id_=None):
+        self._name = name
+        self._id = id_
+
+    def __str__(self):
+        if not self._name:
+            if self.id is None:
+                return 'Item'
+            else:
+                return 'Item {}'.format(self.id)
+        else:
+            return self._name
+
+    def __repr__(self):
+        return "Item(name='{}', id_={})".format(self.name, self.id)
+    
+    @property
+    def id(self):
+        if self._id is None:
+            raise AttributeError
+        return self._id
+
+    @id.setter
+    def id(self, id_):
+        self._id = id_
+        
+    @property
+    def name(self):
+        return str(self)
+
+
+class Model(Item):
     def __init__(self, name=None, id_=None, data=None):
         """
         Model data object
@@ -50,8 +82,7 @@ class Model(object):
         id_ : int, optional
         data : DataFrame, optional
         """
-        self._name = name
-        self._id = id_
+        super().__init__(name, id_)
         self._data = data
         self._gprs = dict()
 
@@ -246,16 +277,6 @@ class Model(object):
         outputs, outputs_ = np.array(shared_outputs), np.array(shared_outputs_)
         return inputs, (outputs, outputs_)
 
-    @property
-    def id(self):
-        if self._id is None:
-            raise AttributeError
-        return self._id
-
-    @id.setter
-    def id(self, id_):
-        self._id = id_
-
     def map_io(self, input_columns, output_columns, remove_duplicates=True):
         """
         Map the column names of inputs and outputs to dictionaries of
@@ -328,10 +349,6 @@ class Model(object):
                 outputs = outputs
         return inputs, outputs
 
-    @property
-    def name(self):
-        return str(self)
-
     def plot_gpr(self, input_columns, output_columns, num_samples=1000,
                  color=None, marker=None, normalize_=None):
         """
@@ -384,6 +401,10 @@ class Model(object):
         if isinstance(key, str):
             key = [key]
         self._data = self.data.sort_values(key)
+        
+
+class Technology(Item):
+    pass
 
 
 class RankedOrder(object):
