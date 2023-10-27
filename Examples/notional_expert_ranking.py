@@ -6,7 +6,7 @@ model rankings in terms of resolution, abstraction, and scope to be
 combined
 """
 from notional_models import *
-from FAMS.model_rankings import Ranking
+from FAMS.model_rankings import ModelRanking
 
 
 def no_scope():
@@ -23,9 +23,9 @@ def no_scope():
     -------
     individual_ranking
     """
-    resolution = Ranking(models, 'Resolution')
+    resolution = ModelRanking(models, 'Resolution')
     resolution.add_order_increasing(models)
-    abstraction = Ranking(models, 'Abstraction')
+    abstraction = ModelRanking(models, 'Abstraction')
     abstraction.add_order_increasing(models)
     return resolution, abstraction
 
@@ -45,11 +45,11 @@ def fixed_scope():
     -------
     individual_ranking
     """
-    resolution = Ranking(models, 'Resolution')
+    resolution = ModelRanking(models, 'Resolution')
     resolution.add_order_increasing(models)
-    abstraction = Ranking(models, 'Abstraction')
+    abstraction = ModelRanking(models, 'Abstraction')
     abstraction.add_order_increasing(models)
-    scope = Ranking(models, 'Scope')
+    scope = ModelRanking(models, 'Scope')
     scope.add_order_fixed(models)
     return resolution, abstraction, scope
 
@@ -71,11 +71,11 @@ def decreasing_scope():
     -------
     individual_ranking
     """
-    resolution = Ranking(models, 'Resolution')
+    resolution = ModelRanking(models, 'Resolution')
     resolution.add_order_increasing(models)
-    abstraction = Ranking(models, 'Abstraction')
+    abstraction = ModelRanking(models, 'Abstraction')
     abstraction.add_order_increasing(models)
-    scope = Ranking(models, 'Scope')
+    scope = ModelRanking(models, 'Scope')
     scope.add_order_decreasing(models)
     return resolution, abstraction, scope
 
@@ -96,11 +96,11 @@ def multiple_scope():
     -------
     individual_ranking
     """
-    resolution = Ranking(models, 'Resolution')
+    resolution = ModelRanking(models, 'Resolution')
     resolution.add_order_increasing(models)
-    abstraction = Ranking(models, 'Abstraction')
+    abstraction = ModelRanking(models, 'Abstraction')
     abstraction.add_order_increasing(models)
-    scope = Ranking(models, 'Scope')
+    scope = ModelRanking(models, 'Scope')
     scope.add_order_fixed(models)
     scope.add_order_decreasing(models)
     return resolution, abstraction, scope
@@ -110,7 +110,7 @@ def multiple_scope():
 # notional_rankings = fixed_scope()
 # notional_rankings = decreasing_scope()
 notional_rankings = multiple_scope()
-combined = Ranking.combine(notional_rankings, name='notional')
+combined = ModelRanking.combine(notional_rankings, name='notional')
 if plot:
     # Plot fidelity KDE distributions
     combined_models = combined.plot_scores(

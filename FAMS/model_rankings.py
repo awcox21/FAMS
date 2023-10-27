@@ -454,27 +454,34 @@ class Order(RankedOrder):
                   enumerate(self.order)]
         order_ = dict()
         for score, group in zip(scores, self.order):
-            for model in group:
-                order_[model.id] = score / len(group) / sum(scores)
+            for item in group:
+                order_[item.id] = score / len(group) / sum(scores)
         return order_
 
     def combine(self, others):
         raise NotImplementedError('Subclass-specific method')
 
     @property
-    def models(self):
-        models = [_i for _j in self.order for _i in _j]
-        models.sort(key=attrgetter('id'))
-        return models
+    def items(self):
+        """
+        All items in order, sorted by ID
+
+        Returns
+        -------
+        items : List
+        """
+        items = [_i for _j in self.order for _i in _j]
+        items.sort(key=attrgetter('id'))
+        return items
 
     @classmethod
-    def randomly_generate_orders(cls, models, num_orders=1):
+    def randomly_generate_orders(cls, items, num_orders=1):
         """
         Create a given number of randomly shuffled model orders
 
         Parameters
         ----------
-        models : List[Model]
+        items : List
         num_orders : int, optional
 
         Returns
@@ -483,15 +490,15 @@ class Order(RankedOrder):
         """
         orders = list()
         for _ in range(num_orders):
-            models_ = list(models)
+            models_ = list(items)
             shuffle(models_)
             orders.append(cls([[_model] for _model in models_]))
-        if len(models) > 2:
-            combinations_ = [_ for _ in combinations(models, 2)]
+        if len(items) > 2:
+            combinations_ = [_ for _ in combinations(items, 2)]
             shuffle(combinations_)
             count = 1
             for combination in combinations_:
-                remaining = list(set(models).difference(combination))
+                remaining = list(set(items).difference(combination))
                 shuffle(remaining)
                 order = list()
                 for model in remaining[:-1]:
@@ -502,12 +509,12 @@ class Order(RankedOrder):
                 count += 1
                 if count > num_orders:
                     break
-        if len(models) > 3:
-            combinations_ = [_ for _ in combinations(models, 3)]
+        if len(items) > 3:
+            combinations_ = [_ for _ in combinations(items, 3)]
             shuffle(combinations_)
             count = 1
             for combination in combinations_:
-                remaining = list(set(models).difference(combination))
+                remaining = list(set(items).difference(combination))
                 shuffle(remaining)
                 order = list()
                 for model in remaining[:-1]:
@@ -521,7 +528,7 @@ class Order(RankedOrder):
         return orders
 
 
-class Ranking(RankedOrder):
+class ModelRanking(RankedOrder):
     permutation_limit = 9, 6  # model limit, permutation limit
 
     def __init__(self, models, name=None, _rankings=None, _scores=None,
@@ -696,7 +703,7 @@ class Ranking(RankedOrder):
             dictionaries containing a list of samples for each model.
         score_weights : List[float, size n_scores], optional
         """
-        models = list(rankings[0].models)
+        models = list(rankings[0].items)
         score_dists = {_model.id: list() for _model in models}
         scores = dict()
         rankings_ = list(rankings)
