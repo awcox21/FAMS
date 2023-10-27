@@ -19,17 +19,17 @@ from sklearn.gaussian_process.kernels import ConstantKernel, RBF
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KernelDensity
-from pygmo import non_dominated_front_2d  # fast_non_dominated_sorting
 from time import time
 from adjustText import adjust_text
 
 from .utils import (
     dist_median, flatten, get_colors, get_kde,
     get_kde_percentile, normalize, remove_outliers, num_permutations,
-    plot_proportion, ordinal)
+    pareto_front, plot_proportion, ordinal)
 
 markers = matplotlib.markers.MarkerStyle().markers
-included_markers = ['point', 'x', 'star', 'octagon', 'pentagon', 'square', 'diamond']
+included_markers = ['point', 'x', 'star', 'octagon', 'pentagon', 'square',
+                    'diamond']
 directions = ['down', 'left', 'right', 'up']
 for direction in directions:
     included_markers.append('tri_{}'.format(direction))
@@ -226,13 +226,13 @@ class Model(object):
         diff_ = set(values).difference(values_)
         if diff_:
             predictions_ = griddata(inputs_, outputs_, np.array(list(diff_)),
-                                   'linear', rescale=False)
+                                    'linear', rescale=False)
             for value, prediction in zip(diff_, predictions_):
                 values_[value] = prediction
         diff = set(values_).difference(values)
         if diff:
             predictions = griddata(inputs, outputs, np.array(list(diff)),
-                                    'linear', rescale=False)
+                                   'linear', rescale=False)
             for value, prediction in zip(diff, predictions):
                 values[value] = prediction
         shared_outputs, shared_outputs_ = list(), list()
@@ -333,7 +333,7 @@ class Model(object):
         return str(self)
 
     def plot_gpr(self, input_columns, output_columns, num_samples=1000,
-                 color=None, marker=None, normalize=None):
+                 color=None, marker=None, normalize_=None):
         """
         Plots Gaussian process regression, showing mean and confidence
         bands
@@ -345,7 +345,7 @@ class Model(object):
         num_samples : float, optional
         color
         marker
-        normalize
+        normalize_
         """
         gpr = self.get_gpr(input_columns, output_columns, _plot=True)
         kwargs = {'label': self.name}
@@ -354,8 +354,8 @@ class Model(object):
         if marker:
             kwargs['marker'] = marker
         ys = gpr.y_train_.copy()
-        if normalize:
-            ys = (ys - normalize) / normalize * 100
+        if normalize_:
+            ys = (ys - normalize_) / normalize_ * 100
         plt.scatter(gpr.X_train_, ys, **kwargs)
         kwargs['label'] = '_nolegend_'
         try:
@@ -364,13 +364,13 @@ class Model(object):
             pass
         xs = np.linspace(min(gpr.X_train_), max(gpr.X_train_), num_samples)
         y_mean, y_std = gpr.predict(xs[:, None], return_std=True)
-        if normalize:
-            y_mean = (y_mean - normalize) / normalize * 100
-            y_std /= normalize
+        if normalize_:
+            y_mean = (y_mean - normalize_) / normalize_ * 100
+            y_std /= normalize_
         plt.plot(xs, y_mean, **kwargs)
         plt.fill_between(
             xs, y_mean - y_std, y_mean + y_std, alpha=0.3)
-        if normalize:
+        if normalize_:
             plt.ylabel('% Error from Baseline')
 
     def sort(self, key):
@@ -1357,8 +1357,7 @@ class Ranking(RankedOrder):
         single = DataFrame(single, columns=('order', 'fidelity', 'efficiency'))
         single['_fidelity'] = 1 / single.fidelity
         single['_efficiency'] = 1 / single.efficiency
-        indices = non_dominated_front_2d(
-            single[['_fidelity', 'efficiency']].values)
+        indices = pareto_front(single[['_fidelity', 'efficiency']].values)
         single_dom = single.loc[indices]
         # print(single_dom)
         eff_off = min((log(single.efficiency.max()),
@@ -1389,7 +1388,7 @@ class Ranking(RankedOrder):
                 _start = len(_current)
                 _current = np.concatenate((_current, np.array(_new)))
             _check = _current[:, 2:4].astype(float)
-            indices = non_dominated_front_2d(_check)
+            indices = pareto_front(_check)
             _updated = _current[indices]
             _diff = len(indices) - _start
             print(_start, _diff)

@@ -386,6 +386,38 @@ def ordinal(n, suffix_only=False):
         return str(n) + suffix
 
 
+def pareto_front(scores):
+    """
+    Method for finding sorted indices of non-dominated multi-objective
+    points
+
+    Notes
+    -----
+    - Based on: https://tinyurl.com/bdxhwk75
+    - Could be more efficient, but straight-forward
+    - Previously used pygmo, but removed dependency
+
+    Parameters
+    ----------
+    scores : ndarray
+
+    Returns
+    -------
+    indices : List
+    """
+    scores_ = scores[scores[:, 0].argsort()]
+    score_map = dict()
+    for score in scores_:
+        score_map[tuple(score)], = np.where(np.all(scores == score, axis=1))[0]
+    pareto = np.ones(scores_.shape[0], dtype=bool)
+    for i, score in enumerate(scores_):
+        if pareto[i]:
+            pareto[pareto] = np.any(scores_[pareto] < score, axis=1)
+            pareto[i] = True
+    return [score_map[tuple(scores_[i])]
+            for i, flag in enumerate(pareto) if flag]
+
+
 def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
                     cmap=None, legend=False):
     """
