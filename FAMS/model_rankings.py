@@ -453,7 +453,9 @@ class Order(RankedOrder):
         """
         Parameters
         ----------
-        order : List[List[Model]]
+        order : List[List]
+            List of lists of items. Sub-lists represent items deemed
+            equivalent.
         """
         order = list(order)
         try:
@@ -626,6 +628,9 @@ class Ranking(RankedOrder):
             combined[key] = values
             # combined[key] = mean(values)
         return combined
+
+    def __repr__(self):
+        return '\n'.join(repr(order) for order in self.orders)
 
     def __str__(self):
         return self.name
