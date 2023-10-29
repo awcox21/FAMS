@@ -1,11 +1,12 @@
 from itertools import combinations, permutations, cycle
-from math import sqrt, log
+from math import sqrt, log, ceil
 from operator import attrgetter, itemgetter
 from random import shuffle
 from warnings import warn
 
 import matplotlib.markers
 import matplotlib.pyplot as plt
+from matplotlib import ticker
 import numpy as np
 from matplotlib import cm
 from matplotlib.ticker import PercentFormatter
@@ -1015,6 +1016,32 @@ class Ranking(RankedOrder):
             values.append(self.score_percentile(key, percentile))
         return Series(values, index=labels)
 
+    def plot_ranked(self, level=1, use_names=True, cumulative=True):
+        data = self.prob_level(level, use_names=use_names)
+        data = Series(data, name='Probability').sort_values()
+        print(data)
+        fig, ax = plt.subplots()
+        ax.barh(range(len(data)), data.values, tick_label=data.index,
+                alpha=0.5, color='black')
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('Probability (Bars)')
+        xmin, xmax = ax.get_xlim()
+        xmax = ceil(xmax * 10) / 10
+        ax.set_xlim(xmin, xmax)
+        if cumulative:
+            ymin, ymax = ax.get_ylim()
+            ax2 = ax.twiny()
+            cumulative = data.sort_values(ascending=False).cumsum()
+            ys = [_ * 100 for _ in reversed([0] + list(cumulative) + [1])]
+            ax2.plot(ys, [-1] + list(range(len(data) + 1)), 'k')
+            fmt = '%.0f%%'  # Format you want the ticks, e.g. '40%'
+            xticks = ticker.FormatStrFormatter(fmt)
+            ax2.xaxis.set_major_formatter(xticks)
+            ax2.set_xlabel('Cumulative (Line)')
+            ax2.vlines(100, ymin, ymax, color='black', alpha=0.5)
+            ax.set_ylim(ymin, ymax)
+            ax2.spines['right'].set_visible(False)
+
     def plot_score_bars(self, cmap=None):
         """
         Plots stacked bar charts of probabilities that each item is 1st
@@ -1211,7 +1238,7 @@ class Ranking(RankedOrder):
                 ax.set_xlim(min_x, max_x)
         return [(_median, _model) for _median, _model, _, _ in items]
 
-    def prob_level(self, level=1, include=None):
+    def prob_level(self, level=1, include=None, use_names=False):
         """
         Calculate probability item at a certain level given current
         scores
@@ -1277,6 +1304,12 @@ class Ranking(RankedOrder):
         prob_level = dict()
         for id_, value in zip(item_ids, values):
             prob_level[id_] = value
+        if use_names:
+            prob_level_ = dict(prob_level)
+            name_dict = {item.id: item.name for item in self.items}
+            prob_level = dict()
+            for id_ in prob_level_:
+                prob_level[name_dict[id_]] = prob_level_[id_]
         return prob_level
 
     def ranking_probabilities(self, num_samples=1000, plot=False):

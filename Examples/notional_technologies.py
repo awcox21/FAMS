@@ -22,6 +22,9 @@ metric1s.append(metric1)
 
 metric1 = Ranking.combine(metric1s, name='Metric 1')
 
+metric1.plot_ranked()
+plt.show()
+
 # metric1.plot_scores()
 # plt.show()
 # metric1.plot_score_bars()
@@ -43,12 +46,12 @@ metric2 = Ranking.combine(metric2s, name='Metric 2')
 # metric2.plot_score_bars()
 # plt.show()
 
-data = DataFrame({metric.name: metric.prob_level()
-                  for metric in (metric1, metric2)})
-print(data)
-print(pareto_front(data.to_numpy()))
-data.plot.scatter('Metric 1', 'Metric 2')
-plt.show()
+# data = DataFrame({metric.name: metric.prob_level()
+#                   for metric in (metric1, metric2)})
+# print(data)
+# print(pareto_front(data.to_numpy()))
+# data.plot.scatter('Metric 1', 'Metric 2')
+# plt.show()
 
 """
 TODO
