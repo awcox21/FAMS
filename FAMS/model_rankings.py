@@ -1016,13 +1016,26 @@ class Ranking(RankedOrder):
             values.append(self.score_percentile(key, percentile))
         return Series(values, index=labels)
 
-    def plot_ranked(self, level=1, use_names=True, cumulative=True):
+    def plot_ranked(self, color='black', level=1, use_names=True,
+                    cumulative=True):
+        """
+        Bar chart of probabilities, optionally with line of cumulative
+        probability
+
+        Parameters
+        ----------
+        color
+            Either string (name or hex value) or tuple of floats for RGB
+        level : int, optional
+        use_names : bool, optional
+        cumulative : bool, optional
+        """
         data = self.prob_level(level, use_names=use_names)
         data = Series(data, name='Probability').sort_values()
         print(data)
         fig, ax = plt.subplots()
         ax.barh(range(len(data)), data.values, tick_label=data.index,
-                alpha=0.5, color='black')
+                alpha=0.5, color=color)
         ax.spines['right'].set_visible(False)
         ax.set_xlabel('Probability (Bars)')
         xmin, xmax = ax.get_xlim()
@@ -1038,7 +1051,7 @@ class Ranking(RankedOrder):
             xticks = ticker.FormatStrFormatter(fmt)
             ax2.xaxis.set_major_formatter(xticks)
             ax2.set_xlabel('Cumulative (Line)')
-            ax2.vlines(100, ymin, ymax, color='black', alpha=0.5)
+            ax2.vlines(100, ymin, ymax, color=color, alpha=0.5)
             ax.set_ylim(ymin, ymax)
             ax2.spines['right'].set_visible(False)
 
