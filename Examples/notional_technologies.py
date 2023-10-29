@@ -23,7 +23,7 @@ metric1s.append(metric1)
 metric1 = Ranking.combine(metric1s, name='Metric 1')
 
 metric1.plot_ranked()
-plt.show()
+# plt.show()
 
 # metric1.plot_scores()
 # plt.show()
@@ -40,6 +40,9 @@ metric2.add_order_fixed(technologies)
 metric2s.append(metric2)
 
 metric2 = Ranking.combine(metric2s, name='Metric 2')
+
+metric2.plot_ranked()
+plt.show()
 
 # metric2.plot_scores()
 # plt.show()

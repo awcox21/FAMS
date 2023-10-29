@@ -1032,7 +1032,6 @@ class Ranking(RankedOrder):
         """
         data = self.prob_level(level, use_names=use_names)
         data = Series(data, name='Probability').sort_values()
-        print(data)
         fig, ax = plt.subplots()
         ax.barh(range(len(data)), data.values, tick_label=data.index,
                 alpha=0.5, color=color)
