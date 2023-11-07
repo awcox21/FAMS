@@ -613,13 +613,17 @@ class TOPSIS(object):
         """
         Rank data based on a given set of relative weightings
 
+        Notes
+        -----
+        Weightings will be normalized within function call, no need to
+        do that ahead of time
+
         Parameters
         ----------
         weights : List[float], optional
             Relative weightings of importance of the different
             attributes. Default value is None, which will make them
             equally weighted.
-
         Returns
         -------
         scores : ndarray
@@ -627,6 +631,8 @@ class TOPSIS(object):
         """
         if weights is None:
             weights = np.ones(len(self.data.columns)) / len(self.data.columns)
+        else:
+            weights /= weights.sum()
         ideal = list()
         negative = list()
         ol = list()
