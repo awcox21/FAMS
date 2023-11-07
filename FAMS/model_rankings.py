@@ -554,7 +554,7 @@ class Order(RankedOrder):
 
 class Ranking(RankedOrder):
     def __init__(self, items, name=None, _rankings=None, _scores=None,
-                 _weights=None, _score_dists=None, _estimators=None):
+                 _weights=None, _score_dists=None, _bandwidths=None):
         """
         Ranking of models based on some criterion
 
@@ -570,8 +570,8 @@ class Ranking(RankedOrder):
             KDE weights corresponding to scores
         _score_dists : Dict[int: Series], optional
             KDE-generated score distribution
-        _estimators : Dict[int: KernelDensity], optional
-            Kernel Density estimation objects for current state
+        _bandwidths : Dict[int: float], optional
+            Kernel Density estimation bandwidth for current state
         """
         self._items = items
         self._name = name
@@ -597,7 +597,7 @@ class Ranking(RankedOrder):
         self._scores = _scores
         self._weights = _weights
         self._score_dists = _score_dists
-        self._estimators = _estimators
+        self._bandwidths = _bandwidths
         self._bounds = None
         self._score_pdfs, self._score_cdfs = None, None
         self._pairwise_probabilities = None
@@ -730,7 +730,7 @@ class Ranking(RankedOrder):
             weights.append(score_weights)
         _weights = list(weights)
         weights = cls._get_weights(weights)
-        estimators = dict()
+        bandwidths = dict()
         for key in score_dists:
             scores_ = [_ranking[key] for _ranking in rankings]
             scores_ = np.array([_i for _j in scores_ for _i in _j])
@@ -739,7 +739,7 @@ class Ranking(RankedOrder):
             grid = GridSearchCV(KernelDensity(), params, cv=len(scores_))
             grid.fit(scores_[:, None], sample_weight=weights)
             kde = grid.best_estimator_
-            estimators[key] = kde
+            bandwidths[key] = kde.bandwidth
 
             def find_start_stop(_xs):
                 """
@@ -775,7 +775,7 @@ class Ranking(RankedOrder):
             sample = np.exp(kde.score_samples(xs[:, np.newaxis]))
             score_dists[key] = Series(sample, xs)
         return cls(items, name, rankings, scores, weights, score_dists,
-                   estimators)
+                   bandwidths)
 
     @property
     def bounds(self):
@@ -1368,8 +1368,7 @@ class Ranking(RankedOrder):
         xs = np.linspace(-2, 2, num_samples)
         for items in combinations(self.items, 2):
             ids = sorted([_item.id for _item in items])
-            estimators = [self._estimators[_id] for _id in ids]
-            bandwidths = [_est.bandwidth for _est in estimators]
+            bandwidths = [self._bandwidths[_id] for _id in ids]
             bandwidth = sum(bandwidths)  # sum variance
             kde = KernelDensity(bandwidth=bandwidth)
             id0, id1 = ids
@@ -1435,7 +1434,7 @@ class Ranking(RankedOrder):
         return sqrt(self.score_var(key))
 
     def score_var(self, key):
-        return self._estimators[key].bandwidth
+        return self._bandwidths[key]
         # mu = self.score_mean(key)
         # xs = self.score_dists[key].index.values
         # ys = self.score_dists[key].values
@@ -1447,7 +1446,7 @@ class ModelRanking(Ranking):
     permutation_limit = 9, 6  # model limit, permutation limit
 
     def __init__(self, models, name=None, _rankings=None, _scores=None,
-                 _weights=None, _score_dists=None, _estimators=None):
+                 _weights=None, _score_dists=None, _bandwidths=None):
         """
         Ranking of models based on some criterion
 
@@ -1463,11 +1462,11 @@ class ModelRanking(Ranking):
             KDE weights corresponding to scores
         _score_dists : Dict[int: Series], optional
             KDE-generated score distribution
-        _estimators : Dict[int: KernelDensity], optional
+        _bandwidths : Dict[int: KernelDensity], optional
             Kernel Density estimation objects for current state
         """
         super().__init__(models, name, _rankings, _scores, _weights,
-                         _score_dists, _estimators)
+                         _score_dists, _bandwidths)
 
     @property
     def models(self):
@@ -2286,5 +2285,3 @@ class ModelRanking(Ranking):
             plt.yticks(list())
             plt.xticks([0.0], ['{}% Freq'.format(threshold)])
         return scores
-
-
