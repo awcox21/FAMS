@@ -495,55 +495,6 @@ class RankedOrder(object):
                 round(score, 16), str(ids), len_=len_))
         return str_
 
-    @classmethod
-    def read_json(cls, path):
-        """
-        Read ranking from json file
-
-        Parameters
-        ----------
-        path : str
-            Either file path or encoded string
-
-        Returns
-        -------
-        ranking
-        """
-        if not isfile(path):
-            try:
-                kwargs = json.loads(path)
-            except JSONDecodeError:
-                raise FileNotFoundError('Invalid path or JSON string')
-        else:
-            with open(path, 'r') as f:
-                kwargs = json.load(f)
-        _cls = kwargs.pop('cls')
-        cls_ = classes[_cls]
-        return cls_(**kwargs)
-
-    def to_json(self, path=None):
-        """
-        Write grain to json file
-
-        Parameters
-        ----------
-        path : str, optional
-            If not provided, will convert to json string and return
-
-        Returns
-        -------
-        dump
-            If path is not provided
-        """
-        kwargs = {'cls': self.__class__.__name__}
-        for key, value in self.__dict__.items():
-            if key in self.__init__.__code__.co_varnames:
-                kwargs[key] = value
-        if not path:
-            return json.dumps(kwargs)
-        with open(path, 'w') as f:
-            json.dump(kwargs, f)
-
     def rank(self):
         """
         Gets the integer ID combined ranking
@@ -601,6 +552,62 @@ class Order(RankedOrder):
             for item in group:
                 order_[item.id] = score / len(group) / sum(scores)
         return order_
+
+    @classmethod
+    def read_json(cls, path):
+        """
+        Read ranking from json file
+
+        Parameters
+        ----------
+        path : str
+            Either file path or encoded string
+
+        Returns
+        -------
+        ranking
+        """
+        if not isfile(path):
+            try:
+                kwargs = json.loads(path)
+            except JSONDecodeError:
+                raise FileNotFoundError('Invalid path or JSON string')
+        else:
+            with open(path, 'r') as f:
+                kwargs = json.load(f)
+        _cls = kwargs.pop('cls')
+        cls_ = classes[_cls]
+        order = list()
+        for index in kwargs['order']:
+            slot = list()
+            for item in index:
+                item_cls = classes[json.loads(item).pop('cls')]
+                item = item_cls.read_json(item)
+                slot.append(item)
+            order.append(slot)
+        kwargs['order'] = order
+        return cls_(**kwargs)
+
+    def to_json(self, path=None):
+        """
+        Write grain to json file
+
+        Parameters
+        ----------
+        path : str, optional
+            If not provided, will convert to json string and return
+
+        Returns
+        -------
+        dump
+            If path is not provided
+        """
+        kwargs = {'cls': self.__class__.__name__,
+                  'order': [[i.to_json() for i in j] for j in self.order]}
+        if not path:
+            return json.dumps(kwargs)
+        with open(path, 'w') as f:
+            json.dump(kwargs, f)
 
     def combine(self, others):
         raise NotImplementedError('Subclass-specific method')
@@ -675,7 +682,7 @@ class Order(RankedOrder):
 class Ranking(RankedOrder):
     def __init__(self, items, name=None, _rankings=None, _scores=None,
                  _weights=None, _score_dists=None, _bandwidths=None,
-                 _bounds=None, _pairwise_probabilities=None):
+                 _orders=None, _bounds=None, _pairwise_probabilities=None):
         """
         Ranking of models based on some criterion
 
@@ -693,6 +700,8 @@ class Ranking(RankedOrder):
             KDE-generated score distribution
         _bandwidths : Dict[int: float], optional
             Kernel Density estimation bandwidth for current state
+        _orders : List[Order], optional
+            Orders from combined rankings. Default value is None.
         _bounds : Tuple[float], optional
             Distribution bounds if loading previously analyzed ranking.
             Default value is None.
@@ -720,7 +729,9 @@ class Ranking(RankedOrder):
             except AttributeError:
                 item.id = i
                 i += 1
-        self.orders = list()
+        if not _orders:
+            _orders = list()
+        self.orders = _orders
         self._rankings = _rankings
         self._scores = _scores
         self._weights = _weights
@@ -830,9 +841,10 @@ class Ranking(RankedOrder):
         score_dists = {_item.id: list() for _item in items}
         scores = dict()
         rankings_ = list(rankings)
-        rankings = list()
+        rankings, orders = list(), list()
         for ranking in rankings_:
             rankings.append(ranking())
+            orders.extend(ranking.orders)
         if weights:
             weights_ = list(weights)
         else:
@@ -903,7 +915,7 @@ class Ranking(RankedOrder):
             sample = np.exp(kde.score_samples(xs[:, np.newaxis]))
             score_dists[key] = Series(sample, xs)
         return cls(items, name, rankings, scores, weights, score_dists,
-                   bandwidths)
+                   bandwidths, orders)
 
     @classmethod
     def read_json(cls, path):
@@ -954,6 +966,8 @@ class Ranking(RankedOrder):
         if kwargs['_bandwidths']:
             kwargs['_bandwidths'] = {int(key): value for key, value in
                                      kwargs['_bandwidths'].items()}
+        orders = kwargs.pop('_orders')
+        kwargs['_orders'] = [Order.read_json(_) for _ in orders]
         if kwargs['_pairwise_probabilities']:
             probabilities = dict()
             for key, dict_ in kwargs['_pairwise_probabilities'].items():
@@ -992,6 +1006,8 @@ class Ranking(RankedOrder):
             kwargs['_score_dists'] = dict()
             for key, series in score_dists.items():
                 kwargs['_score_dists'][key] = series.to_json()
+        orders = dict_.pop('orders')
+        kwargs['_orders'] = [_.to_json() for _ in orders]
         for key, value in dict_.items():
             if key in self.__init__.__code__.co_varnames:
                 kwargs[key] = value
@@ -1670,7 +1686,7 @@ class ModelRanking(Ranking):
 
     def __init__(self, models, name=None, _rankings=None, _scores=None,
                  _weights=None, _score_dists=None, _bandwidths=None,
-                 _bounds=None, _pairwise_probabilities=None):
+                 _orders=None, _bounds=None, _pairwise_probabilities=None):
         """
         Ranking of models based on some criterion
 
@@ -1688,6 +1704,8 @@ class ModelRanking(Ranking):
             KDE-generated score distribution
         _bandwidths : Dict[int: KernelDensity], optional
             Kernel Density estimation objects for current state
+        _orders : List[Order], optional
+            Orders from combined rankings. Default value is None.
         _bounds : Tuple[float], optional
             Distribution bounds if loading previously analyzed ranking.
             Default value is None.
@@ -1697,7 +1715,7 @@ class ModelRanking(Ranking):
             Default value is None.
         """
         super().__init__(models, name, _rankings, _scores, _weights,
-                         _score_dists, _bandwidths, _bounds,
+                         _score_dists, _bandwidths, _orders, _bounds,
                          _pairwise_probabilities)
 
     @classmethod
@@ -1749,6 +1767,8 @@ class ModelRanking(Ranking):
         if kwargs['_bandwidths']:
             kwargs['_bandwidths'] = {int(key): value for key, value in
                                      kwargs['_bandwidths'].items()}
+        orders = kwargs.pop('_orders')
+        kwargs['_orders'] = [Order.read_json(_) for _ in orders]
         if kwargs['_pairwise_probabilities']:
             probabilities = dict()
             for key, dict_ in kwargs['_pairwise_probabilities'].items():
@@ -1787,6 +1807,8 @@ class ModelRanking(Ranking):
             kwargs['_score_dists'] = dict()
             for key, series in score_dists.items():
                 kwargs['_score_dists'][key] = series.to_json()
+        orders = dict_.pop('orders')
+        kwargs['_orders'] = [_.to_json() for _ in orders]
         for key, value in dict_.items():
             if key in self.__init__.__code__.co_varnames:
                 kwargs[key] = value
