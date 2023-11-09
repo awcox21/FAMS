@@ -6,6 +6,7 @@ from warnings import warn
 from os.path import isfile
 import json
 from json.decoder import JSONDecodeError
+from tqdm import tqdm
 
 import matplotlib.markers
 import matplotlib.pyplot as plt
@@ -871,7 +872,7 @@ class Ranking(RankedOrder):
         _weights = list(weights)
         weights = cls._get_weights(weights)
         bandwidths = dict()
-        for key in score_dists:
+        for key in tqdm(score_dists, desc='KDEs'):
             scores_ = [_ranking[key] for _ranking in rankings]
             scores_ = np.array([_i for _j in scores_ for _i in _j])
             scores[key] = scores_
@@ -1605,7 +1606,8 @@ class Ranking(RankedOrder):
             plt.figure()
         probabilities = {_item.id: dict() for _item in self.items}
         xs = np.linspace(-2, 2, num_samples)
-        for items in combinations(self.items, 2):
+        for items in tqdm(list(combinations(self.items, 2)),
+                          desc='pairwise'):
             ids = sorted([_item.id for _item in items])
             bandwidths = [self._bandwidths[_id] for _id in ids]
             bandwidth = sum(bandwidths)  # sum variance
