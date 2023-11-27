@@ -55,8 +55,8 @@ for model_times in (exponential_time_variation(),
     r2s, rmses = correlations
     r2_scores, rmse_scores = correlation_scores
     # multifidelity correlation scoring
-    adjusted = Ranking.combine(notional_rankings, name='correlation adjusted',
-                               score_rankings=[r2_scores, rmse_scores])
+    adjusted = ModelRanking.combine(notional_rankings, name='correlation adjusted',
+                                    score_rankings=[r2_scores, rmse_scores])
     adjusted.multiattribute_scoring(
         input_columns, time_columns, plot=plot, cmap=mono_cmap, plot_single=True)
 

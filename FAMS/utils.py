@@ -389,7 +389,7 @@ def ordinal(n, suffix_only=False):
 def pareto_front(scores):
     """
     Method for finding sorted indices of non-dominated multi-objective
-    points
+    points, assuming minimizing in all dimensions
 
     Notes
     -----
@@ -418,7 +418,7 @@ def pareto_front(scores):
             for i, flag in enumerate(pareto) if flag]
 
 
-def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
+def plot_proportion(x, scores, width=0.8, new_fig=False, items=None,
                     cmap=None, legend=False):
     """
     Plot proportions in a stacked bar chart at location x with given
@@ -430,7 +430,7 @@ def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
     scores : Dict[str: float]
     width : float, optional
     new_fig : bool, optional, optional
-    models : List[Model], optional
+    items : List, optional
     cmap
     legend : bool, optional
     """
@@ -443,15 +443,15 @@ def plot_proportion(x, scores, width=0.8, new_fig=False, models=None,
     bottom = 0
     for c, key in zip(colors, sorted(scores)):
         score = scores[key]
-        if models:
-            for model in models:
-                if model.id == key:
+        if items:
+            for item in items:
+                if item.id == key:
                     break
             else:
-                raise AttributeError('No matching model ID')
-            kwargs = {'label': str(model)}
+                raise AttributeError('No matching item ID')
+            kwargs = {'label': str(item)}
         else:
-            kwargs = {'label': 'Model {}'.format(key)}
+            kwargs = {'label': 'Item {}'.format(key)}
         bar = plt.bar(x, score, width, bottom, color=c, **kwargs)
         ax = plt.gca()
         for rect in bar:
@@ -574,3 +574,126 @@ def remove_outliers(
         if num_clear == num_required:
             break
     return data
+
+
+class TOPSIS(object):
+    def __init__(self, data: DataFrame, maximize: bool = True):
+        """
+        Class for storing data and determining rank via TOPSIS given a
+        set of weights
+
+        Parameters
+        ----------
+        data : DataFrame
+        maximize : bool, optional
+            Boolean for all or tuple of booleans by row for whether
+            column is minimizing or maximizing. Default value is True to
+            maximize all.
+        """
+        self.data = data.copy()
+        nrows, ncols = self.data.shape
+        try:
+            maximize = list(maximize)
+        except TypeError:
+            maximize = [maximize for _ in range(ncols)]
+        self.maximize = maximize
+
+    @property
+    def min_max(self):
+        """
+        Functions to adjust for whether each response is maximized
+
+        Returns
+        -------
+        min_max : List[bool]
+        """
+        return [max if _ else min for _ in self.maximize]
+
+    def __call__(self, weights: list = None) -> np.ndarray:
+        """
+        Rank data based on a given set of relative weightings
+
+        Notes
+        -----
+        Weightings will be normalized within function call, no need to
+        do that ahead of time
+
+        Parameters
+        ----------
+        weights : List[float], optional
+            Relative weightings of importance of the different
+            attributes. Default value is None, which will make them
+            equally weighted.
+        Returns
+        -------
+        scores : ndarray
+            1-D array of scores to rank based on weights
+        """
+        if weights is None:
+            weights = np.ones(len(self.data.columns)) / len(self.data.columns)
+        else:
+            weights /= weights.sum()
+        ideal = list()
+        negative = list()
+        ol = list()
+        for j in range(0, len(self.data)):
+            ok = list()
+            for i in self.data.columns:
+                opk = self.data[i][j]
+                ok.append(opk)
+            ol.append(ok)
+        kk = np.asmatrix(ol)
+        kk = kk.transpose()
+        for i in range(0, len(kk)):
+            stand = kk[i]
+            s = np.sqrt(np.sum(np.array(stand) ** 2))
+            stand_n = stand / s
+            stand_n = stand_n * weights[i]
+            direct = self.min_max[i]
+            if not direct:
+                best = (min(np.array(stand_n)[0]))
+                worst = (max(np.array(stand_n)[0]))
+            elif direct:
+                best = (max(np.array(stand_n)[0]))
+                worst = (min(np.array(stand_n)[0]))
+            else:
+                raise ValueError('Invalid optimization direction given')
+            stand_ideal = (np.array(stand_n)[0] - best) ** 2
+            stand_nideal = (np.array(stand_n)[0] - worst) ** 2
+            ideal.append(stand_ideal)
+            negative.append(stand_nideal)
+        ideal = np.sqrt(sum(np.asmatrix(ideal)))
+        negative = np.sqrt(sum(np.asmatrix(negative)))
+        overall = ideal + negative
+        val, = np.array(negative) / np.array(overall)
+        return val
+
+    def sort(self, weights: list = None, ascending: bool = False) -> DataFrame:
+        """
+        Return copy of dataframe sorted based on given weights
+
+        Parameters
+        ----------
+        weights : List[float], optional
+            Relative weightings of importance of the different
+            attributes. Default value is None, which will make them
+            equally weighted.
+        ascending : bool, optional
+            Direction of sort. Default value is False, where top option
+            will be at top of DataFrame.
+
+        Returns
+        -------
+        sorted : DataFrame
+        """
+        data = self.data.copy()
+        name = 'TOPSIS Score'
+        while True:
+            if name not in data:
+                break
+            else:
+                name += '_'
+        data[name] = self(weights)
+        data = data.sort_values(name, ascending=ascending)
+        data.pop(name)
+        return data
