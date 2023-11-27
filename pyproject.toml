@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FAMS"
+version = "1.0"
+dependencies = [
+    "tqdm",
+    "numpy",
+    "matplotlib",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "adjustText"
+]
+requires-python = ">=3.5"
+authors = [
+    {name = "Adam Cox", email = "adam.cox@asdl.gatech.edu"}
+]
+description = "Fidelity Assessment for Model Selection"
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {file = "LICENSE.md"}
+
+[project.urls]
+Repository = "https://github.com/awcox21/FAMS"
+Issues = "https://github.com/awcox21/FAMS/issues"
