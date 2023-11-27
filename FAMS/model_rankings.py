@@ -44,9 +44,15 @@ markers = [key for key, _ in markers]
 
 
 class Item(object):
-    def __init__(self, name=None, id_=None):
+    def __init__(self, name=None, id_=None, category=None, description=None):
         self._name = name
         self._id = id_
+        if not category:
+            category = str()
+        self.category = category
+        if not description:
+            description = str()
+        self.description = description
 
     def __str__(self):
         if not self._name:
@@ -101,7 +107,8 @@ class Item(object):
             If path is not provided
         """
         kwargs = {'cls': self.__class__.__name__, 'name': self.name,
-                  'id_': self.id}
+                  'id_': self.id, 'category': self.category,
+                  'description': self.description}
         if not path:
             return json.dumps(kwargs)
         with open(path, 'w') as f:
@@ -123,7 +130,8 @@ class Item(object):
 
 
 class Model(Item):
-    def __init__(self, name=None, id_=None, data=None):
+    def __init__(self, name=None, id_=None, category=None, description=None,
+                 data=None):
         """
         Model data object
 
@@ -131,9 +139,11 @@ class Model(Item):
         ----------
         name : str, optional
         id_ : int, optional
+        category : str, optional
+        description : str, optional
         data : DataFrame, optional
         """
-        super().__init__(name, id_)
+        super().__init__(name, id_, category, description)
         self._data = data
         self._gprs = dict()
 
@@ -164,7 +174,8 @@ class Model(Item):
             If path is not provided
         """
         kwargs = {'cls': self.__class__.__name__, 'name': self.name,
-                  'id_': self.id, 'data': self._data}
+                  'id_': self.id, 'category': self.category,
+                  'description': self.description, 'data': self._data}
         if not path:
             return json.dumps(kwargs)
         with open(path, 'w') as f:
@@ -680,9 +691,10 @@ class Order(RankedOrder):
 
 
 class Ranking(RankedOrder):
-    def __init__(self, items, name=None, _rankings=None, _scores=None,
-                 _weights=None, _score_dists=None, _bandwidths=None,
-                 _orders=None, _bounds=None, _pairwise_probabilities=None):
+    def __init__(self, items, name=None, category=None, description=None,
+                 _rankings=None, _scores=None, _weights=None,
+                 _score_dists=None, _bandwidths=None, _orders=None,
+                 _bounds=None, _pairwise_probabilities=None):
         """
         Ranking of models based on some criterion
 
@@ -690,6 +702,8 @@ class Ranking(RankedOrder):
         ----------
         items : List
         name : str, optional
+        category : str, optional
+        description : str, optional
         _rankings : List[Ranking], optional
             Ranking objects for derived rankings
         _scores : Dict[int: list], optional
@@ -712,6 +726,12 @@ class Ranking(RankedOrder):
         """
         self._items = items
         self._name = name
+        if not category:
+            category = str()
+        self.category = category
+        if not description:
+            description = str()
+        self.description = description
         ids = list()
         for item in items:
             try:
@@ -814,8 +834,9 @@ class Ranking(RankedOrder):
                 weights_ = weights
 
     @classmethod
-    def combine(cls, rankings, weights=None, name=None, num_samples=1000,
-                score_rankings=None, score_weights=None):
+    def combine(cls, rankings, weights=None, name=None, category=None,
+                description=None, num_samples=1000, score_rankings=None,
+                score_weights=None):
         """
         Combines rankings into derived ranking using KDE
 
@@ -831,6 +852,8 @@ class Ranking(RankedOrder):
         rankings : List[Ranking, size n_rankings]
         weights : List[Union[int, float], size n_rankings], optional
         name : str, optional
+        category : str, optional
+        description : str, optional
         num_samples : int, optional
         score_rankings : List[dict[int: Union[List[float]]]], optional
             Scores not generated from Ranking call. Iterable of
@@ -914,8 +937,8 @@ class Ranking(RankedOrder):
                 start, stop = find_start_stop(xs)
             sample = np.exp(kde.score_samples(xs[:, np.newaxis]))
             score_dists[key] = Series(sample, xs)
-        return cls(items, name, rankings, scores, weights, score_dists,
-                   bandwidths, orders)
+        return cls(items, name, category, description, rankings, scores,
+                   weights, score_dists, bandwidths, orders)
 
     @classmethod
     def read_json(cls, path):
@@ -1684,9 +1707,10 @@ class Ranking(RankedOrder):
 class ModelRanking(Ranking):
     permutation_limit = 9, 6  # model limit, permutation limit
 
-    def __init__(self, models, name=None, _rankings=None, _scores=None,
-                 _weights=None, _score_dists=None, _bandwidths=None,
-                 _orders=None, _bounds=None, _pairwise_probabilities=None):
+    def __init__(self, models, name=None, category=None, description=None,
+                 _rankings=None, _scores=None, _weights=None,
+                 _score_dists=None, _bandwidths=None, _orders=None,
+                 _bounds=None, _pairwise_probabilities=None):
         """
         Ranking of models based on some criterion
 
@@ -1694,6 +1718,8 @@ class ModelRanking(Ranking):
         ----------
         models : List[Model]
         name : str, optional
+        category : str, optional
+        description : str, optional
         _rankings : List[Ranking], optional
             Ranking objects for derived rankings
         _scores : Dict[int: list], optional
@@ -1714,9 +1740,9 @@ class ModelRanking(Ranking):
             better than another if loading previously analyzed ranking.
             Default value is None.
         """
-        super().__init__(models, name, _rankings, _scores, _weights,
-                         _score_dists, _bandwidths, _orders, _bounds,
-                         _pairwise_probabilities)
+        super().__init__(models, name, category, description, _rankings,
+                         _scores, _weights, _score_dists, _bandwidths, _orders,
+                         _bounds, _pairwise_probabilities)
 
     @classmethod
     def read_json(cls, path):
