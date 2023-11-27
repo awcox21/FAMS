@@ -32,3 +32,15 @@ whether each item is better/worse/equivalent to each other item
 #### Fidelity - Efficiency Multi-Attribute Scoring and Decision-Making
 
 **For more information see [Adam's dissertation](https://smartech.gatech.edu/handle/1853/61283)**
+
+## Changelog
+
+### v1.1: Method generalization, usability features
+Create generalized Ranking object and differentiate from ModelRanking object in order to be able to use expert-driven data processing to assess more generic items such as technologies in addition to just models.
+
+Other updates:
+- Updated parameters such as description, category
+- Capability to store/load rankings in JSON files, including processed probabilities
+- Updated examples and plotting
+- New TOPSIS method
+- Progress bars
