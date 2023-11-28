@@ -35,6 +35,9 @@ whether each item is better/worse/equivalent to each other item
 
 ## Changelog
 
+### v1.1.1: Minor bug fix version
+See commit message, multiple minor bug fixes
+
 ### v1.1: Method generalization, usability features
 Create generalized Ranking object and differentiate from ModelRanking object in order to be able to use expert-driven data processing to assess more generic items such as technologies in addition to just models.
 
