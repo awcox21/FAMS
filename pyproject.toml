@@ -25,3 +25,6 @@ license = {file = "LICENSE.md"}
 [project.urls]
 Repository = "https://github.com/awcox21/FAMS"
 Issues = "https://github.com/awcox21/FAMS/issues"
+
+[tool.setuptools]
+packages = ["FAMS"]

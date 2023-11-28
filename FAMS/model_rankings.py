@@ -6,9 +6,10 @@ from warnings import warn
 from os.path import isfile
 import json
 from json.decoder import JSONDecodeError
-from tqdm import tqdm
+from io import StringIO
 
-import matplotlib.markers
+from tqdm import tqdm
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 import numpy as np
@@ -32,7 +33,7 @@ from .utils import (
     get_kde_percentile, normalize, remove_outliers, num_permutations,
     pareto_front, plot_proportion, ordinal)
 
-markers = matplotlib.markers.MarkerStyle().markers
+markers = Line2D.markers
 included_markers = ['point', 'x', 'star', 'octagon', 'pentagon', 'square',
                     'diamond']
 directions = ['down', 'left', 'right', 'up']
@@ -983,7 +984,7 @@ class Ranking(RankedOrder):
             dists = dict()
             for key, series in kwargs['_score_dists'].items():
                 key = int(key)
-                dists[key] = read_json(series, typ='series',
+                dists[key] = read_json(StringIO(series), typ='series',
                                        convert_axes=False)
                 dists[key].index = dists[key].index.astype(float)
             kwargs['_score_dists'] = dists
